@@ -1,0 +1,9 @@
+{
+  "name": "fotoalert",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Fotoalert: PWA z ostrzeżeniami o fotoradarach, nawigacją i wspólnymi zgłoszeniami kierowców.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

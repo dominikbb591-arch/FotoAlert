@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fotoalert</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0e1620">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fotoalert">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --bg:#0e1620; --panel:#16212e; --panel2:#1e2c3d; --line:#2a3b50;
+  --fg:#eaf1f8; --mute:#8fa3b8; --accent:#ffb020; --ok:#3ddc84; --bad:#ff4d4d; --blue:#3d8bff; --zab:#2f9e44;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden}
+button,input,select{font-family:inherit}
+#map{position:fixed;inset:0;background:#0b121a}
+.night .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.55)}
+.leaflet-control-attribution{font-size:9px!important;opacity:.75}
+.leaflet-bottom{bottom:var(--sab)}
+.leaflet-popup-content{font-size:14px;line-height:1.4;margin:12px 14px}
+.leaflet-popup-content b{font-size:15px}
+.leaflet-popup-content .btn{color:#111;background:#eee;border-color:#ccc;padding:7px 10px;margin:6px 6px 0 0;font-size:13px}
+
+/* górny pasek */
+#online{position:fixed;top:calc(var(--sat) + 8px);right:12px;z-index:650;background:#000b;color:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+#online i{width:8px;height:8px;border-radius:50%;background:var(--mute);display:block}
+#online.on i{background:var(--ok)}
+#top{position:fixed;left:10px;right:10px;top:calc(var(--sat) + 38px);z-index:600;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+#top>*{pointer-events:auto}
+#searchRow{display:flex;gap:8px}
+#q{flex:1;min-width:0;height:46px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:0 14px;font-size:16px;box-shadow:0 6px 20px #0007}
+#q::placeholder{color:var(--mute)}
+#bQ{width:46px;height:46px;border-radius:14px;border:0;background:var(--accent);color:#1a1200;font-size:20px;font-weight:700;box-shadow:0 6px 20px #0007;cursor:pointer}
+#results{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-height:42vh;overflow:auto;box-shadow:0 10px 30px #000a}
+.res{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);padding:11px 14px;cursor:pointer}
+.res:last-child{border-bottom:0}
+.res b{display:block;font-size:15px}
+.res span{display:block;font-size:12px;color:var(--mute);margin-top:2px}
+.res.none{color:var(--mute);cursor:default}
+
+/* nawigacja */
+#nav{background:#0b3d91;border-radius:16px;padding:10px 12px;display:flex;align-items:center;gap:12px;box-shadow:0 10px 30px #000a}
+#nav .arr{font-size:40px;line-height:1;width:48px;text-align:center;flex:none}
+#nav .mid{flex:1;min-width:0}
+#nav .dd{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+#nav .tx{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nav .sub{font-size:12px;color:#bcd2ff;margin-top:2px;font-variant-numeric:tabular-nums}
+#nav .x{flex:none;width:38px;height:38px;border-radius:50%;border:0;background:#ffffff22;color:#fff;font-size:18px;cursor:pointer}
+
+/* ostrzeżenie */
+#alert{border-radius:18px;padding:12px 16px;background:var(--accent);color:#1a1200;display:none;align-items:center;gap:14px;box-shadow:0 10px 30px #000a}
+#alert.on{display:flex}
+#alert.danger{background:var(--bad);color:#fff}
+#alert .ic{font-size:30px;line-height:1}
+#alert .t{font-weight:800;font-size:14px;letter-spacing:.02em;text-transform:uppercase}
+#alert .d{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
+#alert .s{font-size:13px;opacity:.85}
+#alert.pulse{animation:pulse .5s ease-in-out infinite alternate}
+@keyframes pulse{to{transform:scale(1.02)}}
+@media (prefers-reduced-motion:reduce){#alert.pulse{animation:none}}
+
+/* prędkość i limit */
+#speed{position:fixed;left:14px;bottom:calc(var(--sab) + 22px);z-index:500;width:104px;height:104px;border-radius:50%;
+  background:var(--panel);border:5px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  box-shadow:0 6px 24px #0008;transition:border-color .2s}
+#speed b{font-size:38px;line-height:1;font-variant-numeric:tabular-nums}
+#speed small{font-size:11px;color:var(--mute);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+#speed.over{border-color:var(--bad)}
+#limitSign{position:fixed;left:33px;bottom:calc(var(--sab) + 22px + 104px + 10px);z-index:500;width:66px;height:66px;border-radius:50%;
+  background:#fff;color:#111;border:7px solid var(--bad);display:none;align-items:center;justify-content:center;font-weight:800;font-size:25px;
+  box-shadow:0 6px 20px #0008;font-variant-numeric:tabular-nums}
+#limitSign.on{display:flex}
+#limitSign.est{border-style:dashed;border-color:#e08a8a;color:#555}
+#limitSign.est::after{content:"~";position:absolute;right:-4px;top:-6px;font-size:18px;color:#fff;background:#555;border-radius:50%;width:20px;height:20px;line-height:19px;text-align:center}
+
+/* przyciski */
+.fab{position:fixed;right:14px;z-index:500;width:52px;height:52px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--fg);
+  font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px #0008;cursor:pointer}
+.fab:active{background:var(--panel2)}
+.fab.main{background:var(--accent);color:#1a1200;border-color:var(--accent);width:64px;height:64px;font-size:32px;font-weight:700;right:8px}
+#bReport{bottom:calc(var(--sab) + 22px)}
+#bLocate{bottom:calc(var(--sab) + 98px)}
+#bSaved{bottom:calc(var(--sab) + 162px)}
+#bSet{bottom:calc(var(--sab) + 226px)}
+:focus-visible{outline:3px solid #fff;outline-offset:2px}
+
+/* panele */
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:800;background:var(--panel);border-radius:22px 22px 0 0;
+  padding:18px 18px calc(var(--sab) + 18px);transform:translateY(105%);transition:transform .25s;box-shadow:0 -10px 40px #000a;max-height:82%;overflow:auto}
+.sheet.on{transform:none}
+@media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+.sheet h2{margin:0 0 6px;font-size:18px}
+.sheet h3{margin:16px 0 6px;font-size:14px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.sheet p{color:var(--mute);font-size:13px;line-height:1.5;margin:8px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.opt{display:flex;align-items:center;gap:10px;width:100%;padding:13px 12px;border-radius:14px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font-size:15px;text-align:left;cursor:pointer;min-width:0}
+.opt span{font-size:22px;flex:none}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 2px;border-bottom:1px solid var(--line);font-size:16px}
+.row:last-of-type{border-bottom:0}
+.sw{appearance:none;-webkit-appearance:none;width:50px;height:30px;border-radius:15px;background:var(--line);position:relative;cursor:pointer;transition:background .2s;flex:none;margin:0}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:left .2s}
+.sw:checked{background:var(--ok)}
+.sw:checked::after{left:23px}
+.btn{padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font-size:15px;cursor:pointer}
+.btn.pri{background:var(--accent);color:#1a1200;border-color:var(--accent);font-weight:700}
+.btn.bad{color:#ff9a9a}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.inp{width:100%;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);padding:0 10px;font-size:16px}
+select.inp{padding:0 6px}
+.pr{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.pr label{font-size:12px;color:var(--mute);display:block}
+.ptab{width:100%;border-collapse:collapse;margin-top:6px;font-size:15px}
+.ptab td{padding:6px 2px;border-bottom:1px solid var(--line)}
+.ptab td:last-child{text-align:right;color:var(--mute);font-size:12px}
+.ptab b{font-variant-numeric:tabular-nums}
+.sv{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.sv .nm{flex:1;min-width:0;background:none;border:0;color:var(--fg);text-align:left;font-size:15px;cursor:pointer;padding:6px 0}
+.sv .btn{padding:8px 10px;font-size:13px}
+#scrim{position:fixed;inset:0;z-index:700;background:#0006;display:none}
+#scrim.on{display:block}
+
+/* ekran startowy */
+#start{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:calc(var(--sat) + 24px) 28px calc(var(--sab) + 24px);text-align:center;gap:14px;overflow:auto}
+#start img{width:96px;height:96px;border-radius:22px}
+#start h1{margin:6px 0 0;font-size:30px;letter-spacing:-.01em}
+#start p{max-width:360px;color:var(--mute);line-height:1.55;margin:0;font-size:14px}
+#start .go{margin-top:10px;padding:16px 30px;font-size:18px;font-weight:800;border-radius:16px;border:0;background:var(--accent);color:#1a1200;cursor:pointer}
+#start .alt{background:none;border:0;color:var(--mute);text-decoration:underline;font-size:14px;cursor:pointer}
+
+/* znaczniki */
+.cam{width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:var(--accent);border:2px solid #1a1200;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px #0009}
+.cam i{transform:rotate(45deg);font-style:normal;font-size:14px}
+.cam.red{background:var(--bad)}.cam.avg{background:#c18cff}.cam.user{outline:2px dashed #fff;outline-offset:1px}
+.rep{width:36px;height:36px;border-radius:50%;background:#fff;border:3px solid #111;display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:0 2px 10px #000a}
+.fuel{display:flex;align-items:center;gap:3px;background:#fff;color:#111;border:2px solid #111;border-radius:999px;padding:2px 7px 2px 4px;font-size:12px;white-space:nowrap;box-shadow:0 2px 8px #0009;width:max-content}
+.fuel b{font-variant-numeric:tabular-nums}
+.fuel.old{background:#ddd;color:#555}
+.fuel.none{padding:2px 4px}
+.zab{width:26px;height:26px;border-radius:50%;background:var(--zab);color:#fff;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;box-shadow:0 2px 8px #0009}
+.sav{width:26px;height:26px;border-radius:50%;background:#7a4dff;color:#fff;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px #0009}
+.pin{font-size:34px;line-height:1;filter:drop-shadow(0 2px 4px #000a)}
+.me{width:26px;height:26px}
+.me svg{width:26px;height:26px;filter:drop-shadow(0 2px 4px #000a)}
+#toast{position:fixed;left:50%;bottom:calc(var(--sab) + 150px);transform:translateX(-50%);z-index:900;background:#000d;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;display:none;max-width:80%;text-align:center}
+#toast.on{display:block}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="online" title="Aktywni użytkownicy"><i></i><span id="onT">—</span></div>
+
+<div id="top">
+  <form id="searchRow" autocomplete="off">
+    <input id="q" type="search" placeholder="Szukaj ulicy lub miasta" enterkeyhint="search" aria-label="Szukaj ulicy lub miasta">
+    <button id="bQ" type="submit" aria-label="Szukaj">⌕</button>
+  </form>
+  <div id="results" hidden></div>
+  <div id="nav" hidden>
+    <div class="arr" id="nArr">↑</div>
+    <div class="mid"><div class="dd" id="nD">—</div><div class="tx" id="nT"></div><div class="sub" id="nS"></div></div>
+    <button class="x" id="nX" aria-label="Zakończ nawigację">✕</button>
+  </div>
+  <div id="alert" role="alert" aria-live="assertive">
+    <div class="ic" id="aI">📷</div>
+    <div style="flex:1;min-width:0">
+      <div class="t" id="aT">Fotoradar</div>
+      <div class="d" id="aD">—</div>
+      <div class="s" id="aS"></div>
+    </div>
+  </div>
+</div>
+
+<div id="limitSign" aria-label="Ograniczenie prędkości"></div>
+<div id="speed"><b id="spV">0</b><small id="spU">km/h</small></div>
+
+<button class="fab" id="bSet" aria-label="Ustawienia">⚙</button>
+<button class="fab" id="bSaved" aria-label="Zapisane miejsca">★</button>
+<button class="fab" id="bLocate" aria-label="Wyśrodkuj na mojej pozycji">◎</button>
+<button class="fab main" id="bReport" aria-label="Zgłoś zdarzenie">+</button>
+
+<div id="scrim"></div>
+
+<div class="sheet" id="shReport" role="dialog" aria-label="Zgłoś zdarzenie">
+  <h2>Co widzisz na drodze?</h2>
+  <div class="grid" id="repGrid"></div>
+  <p>Zgłoszenie zobaczą inni kierowcy w pobliżu i wygaśnie samo po pewnym czasie. Nie zgłaszaj w trakcie jazdy, jeśli prowadzisz sam.</p>
+</div>
+
+<div class="sheet" id="shPlace" role="dialog" aria-label="Miejsce"></div>
+
+<div class="sheet" id="shSaved" role="dialog" aria-label="Zapisane miejsca">
+  <h2>Zapisane</h2>
+  <div id="savedList"></div>
+  <p>Przytrzymaj palec na mapie, żeby wybrać miejsce, a potem je zapisz.</p>
+</div>
+
+<div class="sheet" id="shSet" role="dialog" aria-label="Ustawienia">
+  <h2>Ustawienia</h2>
+  <h3>Alerty</h3>
+  <label class="row">Dźwięk ostrzeżenia <input class="sw" type="checkbox" id="oSound"></label>
+  <label class="row">Komunikat głosowy <input class="sw" type="checkbox" id="oVoice"></label>
+  <label class="row">Wibracje <input class="sw" type="checkbox" id="oVib"></label>
+  <h3>Mapa</h3>
+  <label class="row">Tryb nocny mapy <input class="sw" type="checkbox" id="oNight"></label>
+  <label class="row">Mile zamiast kilometrów <input class="sw" type="checkbox" id="oMi"></label>
+  <label class="row">Fotoradary <input class="sw" type="checkbox" id="oCam"></label>
+  <label class="row">Stacje paliw i ceny <input class="sw" type="checkbox" id="oFuel"></label>
+  <label class="row">Sklepy Żabka <input class="sw" type="checkbox" id="oZab"></label>
+  <label class="row">Cena na mapie
+    <select class="inp" id="oFt" style="width:auto"><option value="pb95">Benzyna 95</option><option value="pb98">Benzyna 98</option><option value="on">Diesel</option><option value="lpg">LPG</option></select>
+  </label>
+  <h3>Serwer</h3>
+  <p style="margin-top:0">Zostaw puste, jeśli aplikacja działa z własnego serwera. Jeśli hostujesz ją osobno, wpisz adres serwera ze zgłoszeniami.</p>
+  <input class="inp" id="oSrv" type="url" inputmode="url" placeholder="https://twoj-serwer.onrender.com" autocapitalize="off" autocorrect="off">
+  <div class="btns">
+    <button class="btn pri" id="bSrv">Zapisz adres</button>
+    <button class="btn" id="bDemo">Tryb demo</button>
+    <button class="btn" id="bRefresh">Odśwież dane</button>
+    <button class="btn" id="bClose">Zamknij</button>
+  </div>
+  <p id="info"></p>
+  <p>Fotoradary, stacje, sklepy i limity prędkości pochodzą z OpenStreetMap (ODbL) i mogą być niepełne lub nieaktualne. Ceny paliw wpisują użytkownicy. Aplikacja pomaga, ale nie zwalnia z przestrzegania znaków drogowych. W niektórych krajach (np. Niemcy, Szwajcaria) korzystanie z ostrzeżeń o fotoradarach podczas jazdy jest zabronione.</p>
+</div>
+
+<div id="toast"></div>
+
+<div id="start">
+  <img src="icon-192.png" alt="">
+  <h1>Fotoalert</h1>
+  <p>Ostrzega przed fotoradarami i zgłoszeniami innych kierowców, pokazuje limit prędkości na drodze, stacje paliw z cenami, sklepy Żabka i prowadzi do wybranego miejsca.</p>
+  <p>Zostaw ekran włączony i aplikację na wierzchu. Przeglądarki wstrzymują GPS, gdy ekran jest zablokowany.</p>
+  <button class="go" id="bGo">Włącz ostrzeganie</button>
+  <button class="alt" id="bDemo2">Najpierw zobacz demo</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const jget=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}};
+const jset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+const R=6371000,rad=d=>d*Math.PI/180,deg=r=>r*180/Math.PI;
+function dist(a,b,c,d){const p=rad(c-a),q=rad(d-b);const x=Math.sin(p/2)**2+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(q/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+function bearing(a,b,c,d){const y=Math.sin(rad(d-b))*Math.cos(rad(c));const x=Math.cos(rad(a))*Math.sin(rad(c))-Math.sin(rad(a))*Math.cos(rad(c))*Math.cos(rad(d-b));return (deg(Math.atan2(y,x))+360)%360}
+const adiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ---------- ustawienia i dane lokalne ---------- */
+const S=Object.assign({sound:true,voice:true,vib:true,night:true,mi:false,fuel:'pb95',fuelOn:true,zabkaOn:true,camOn:true,server:''},jget('fa.s',{}));
+let saved=jget('fa.saved',[]);
+let userCams=jget('fa.user',[]);
+let cid=jget('fa.cid',null);
+if(!cid||typeof cid!=='string'||cid.length<8){cid=((window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Math.random().toString(36).slice(2)+Date.now().toString(36))).replace(/[^A-Za-z0-9_-]/g,'').slice(0,36);jset('fa.cid',cid)}
+
+/* ---------- typy ---------- */
+const CAMT={fixed:{ic:'📷',n:'Stały fotoradar',c:''},red:{ic:'🚦',n:'Kamera na czerwonym świetle',c:'red'},avg:{ic:'📏',n:'Odcinkowy pomiar prędkości',c:'avg'}};
+const RT={
+  police:{ic:'🚓',n:'Policja'},camera:{ic:'📷',n:'Fotoradar mobilny'},accident:{ic:'💥',n:'Wypadek'},
+  stopped:{ic:'🚗',n:'Zatrzymany pojazd'},animal:{ic:'🦌',n:'Dzikie zwierzę na drodze'},obstacle:{ic:'🪨',n:'Przeszkoda na drodze'},
+  lane:{ic:'🚧',n:'Zamknięty pas ruchu'},closed:{ic:'⛔',n:'Zamknięta droga'},jam:{ic:'🐌',n:'Korek'},
+  roadwork:{ic:'👷',n:'Roboty drogowe'},ice:{ic:'🧊',n:'Śliska droga'},fog:{ic:'🌫️',n:'Mgła'},pothole:{ic:'🕳️',n:'Dziura w jezdni'}
+};
+const FT={pb95:'Benzyna 95',pb98:'Benzyna 98',on:'Diesel',lpg:'LPG'};
+
+/* ---------- mapa ---------- */
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([52.2297,21.0122],15);
+L.control.attribution({position:'bottomleft',prefix:false}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+const zabkaLayer=L.layerGroup().addTo(map),fuelLayer=L.layerGroup().addTo(map),camLayer=L.layerGroup().addTo(map),
+      repLayer=L.layerGroup().addTo(map),savedLayer=L.layerGroup().addTo(map),routeLayer=L.layerGroup().addTo(map);
+let selMarker=null,follow=true;
+map.on('dragstart',()=>{follow=false});
+const meIcon=L.divIcon({className:'me',iconSize:[26,26],iconAnchor:[13,13],html:'<svg viewBox="0 0 26 26"><g id="arrow"><path d="M13 2 L22 23 L13 18 L4 23 Z" fill="#3d8bff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g></svg>'});
+const meMarker=L.marker([0,0],{icon:meIcon,interactive:false,zIndexOffset:1000});
+function applyTheme(){document.body.classList.toggle('night',S.night)}
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),3500)}
+function info(t){$('#info').textContent=t}
+
+/* ---------- Overpass: kolejka zapytań ---------- */
+const OVP=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const ovpQ=[];let ovpBusy=0;
+function ovp(q,prio){return new Promise((res,rej)=>{const j={q,res,rej};if(prio)ovpQ.unshift(j);else ovpQ.push(j);pump()})}
+function pump(){while(ovpBusy<2&&ovpQ.length){const j=ovpQ.shift();ovpBusy++;ovpRun(j.q).then(j.res,j.rej).finally(()=>{ovpBusy--;pump()})}}
+async function ovpRun(q){
+  let err;
+  for(const u of OVP){
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),50000);
+    try{
+      const r=await fetch(u,{method:'POST',body:'data='+encodeURIComponent(q),signal:ctl.signal});
+      if(!r.ok)throw new Error('overpass '+r.status);
+      return await r.json();
+    }catch(e){err=e}finally{clearTimeout(to)}
+  }
+  throw err;
+}
+
+/* ---------- komórki z punktami (fotoradary, stacje, Żabki) ---------- */
+const CELL=0.1,CELL_TTL=24*3600e3;
+let cells=jget('fa.cells',{});
+Object.keys(cells).forEach(k=>{const c=cells[k];c.loading=false;c.fail=0;if(!c.cams)c.cams=[];if(!c.fuel)c.fuel=[];if(!c.zabka)c.zabka=[]});
+let camAll=[];
+let saveCellsT=null;
+function saveCells(){clearTimeout(saveCellsT);saveCellsT=setTimeout(()=>{
+  const keys=Object.keys(cells).filter(k=>cells[k].t).sort((a,b)=>cells[b].t-cells[a].t).slice(0,24),o={};
+  keys.forEach(k=>{const c=cells[k];o[k]={t:c.t,cams:c.cams,fuel:c.fuel,zabka:c.zabka}});
+  jset('fa.cells',o)},1500)}
+function cellsFor(b){
+  const i0=Math.floor(b.getSouth()/CELL),i1=Math.floor(b.getNorth()/CELL),j0=Math.floor(b.getWest()/CELL),j1=Math.floor(b.getEast()/CELL);
+  const out=[];if((i1-i0+1)*(j1-j0+1)>9)return out;
+  for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++)out.push([i,j]);
+  return out;
+}
+const r4=v=>Math.round(v*1e4)/1e4;
+function parseCell(j){
+  const cams=[],fuel=[],zabka=[],seen={};
+  const addr=t=>[[t['addr:street'],t['addr:housenumber']].filter(Boolean).join(' '),t['addr:city']].filter(Boolean).join(', ');
+  (j.elements||[]).forEach(e=>{
+    const t=e.tags||{},lat=e.lat!=null?e.lat:(e.center&&e.center.lat),lon=e.lon!=null?e.lon:(e.center&&e.center.lon);
+    if(lat==null||lon==null)return;
+    const id=e.type[0]+e.id;if(seen[id])return;seen[id]=1;
+    if(t.amenity==='fuel'){
+      fuel.push({id,lat,lon,name:t.name||t.brand||t.operator||'Stacja paliw',brand:t.brand||t.operator||'',addr:addr(t),hours:t.opening_hours||''});
+    }else if(t.shop&&/[ŻżZz]abka/.test((t.name||'')+' '+(t.brand||''))){
+      zabka.push({id,lat,lon,name:t.name||'Żabka',addr:addr(t),hours:t.opening_hours||''});
+    }else if(t.highway==='speed_camera'||t.enforcement){
+      const en=t.enforcement||'';let type='fixed';
+      if(/traffic_signals/.test(en))type='red';else if(/average_speed/.test(en))type='avg';
+      const mx=parseInt(t.maxspeed,10);
+      cams.push({id,lat,lon,type,max:isNaN(mx)?null:mx,src:'osm'});
+    }
+  });
+  return {cams,fuel,zabka};
+}
+function loadCell(i,j,force){
+  const k=i+':'+j,c=cells[k],now=Date.now();
+  if(c&&(c.loading||(c.fail&&now-c.fail<60000)||(c.t&&now-c.t<CELL_TTL&&!force)))return;
+  const prev=c&&c.t?c:null;
+  cells[k]=Object.assign({t:0,cams:[],fuel:[],zabka:[]},prev||{},{loading:true,fail:0});
+  const bb=`${r4(i*CELL)},${r4(j*CELL)},${r4((i+1)*CELL)},${r4((j+1)*CELL)}`;
+  const q=`[out:json][timeout:40];(node["highway"="speed_camera"](${bb});node["enforcement"~"maxspeed|average_speed|traffic_signals"](${bb});nwr["amenity"="fuel"](${bb});nwr["shop"]["name"~"[ŻżZz]abka"](${bb});nwr["shop"]["brand"~"[ŻżZz]abka"](${bb}););out center tags;`;
+  ovp(q,false).then(j=>{cells[k]=Object.assign({t:Date.now(),loading:false,fail:0},parseCell(j));saveCells();rebuild()})
+    .catch(()=>{cells[k]=Object.assign({t:0,cams:[],fuel:[],zabka:[]},prev||{},{loading:false,fail:Date.now()});info('Nie udało się pobrać części danych mapy. Używam zapisanych.')});
+}
+function ensureView(force){
+  if(map.getZoom()<12)return;
+  cellsFor(map.getBounds()).forEach(([i,j])=>loadCell(i,j,force));
+}
+function ensureNearMe(){
+  if(!me)return;
+  cellsFor(L.latLngBounds([me.lat-0.05,me.lon-0.08],[me.lat+0.05,me.lon+0.08])).forEach(([i,j])=>loadCell(i,j));
+}
+
+/* ---------- rysowanie punktów ---------- */
+let reports=[],prices={},demoCam=null;
+function rebuild(){
+  camAll=[];
+  for(const k in cells)(cells[k].cams||[]).forEach(c=>camAll.push(c));
+  userCams.forEach(c=>camAll.push(c));
+  if(demoCam)camAll.push(demoCam);
+  renderPOI();
+}
+const fmtPrice=v=>v.toFixed(2).replace('.',',');
+function ago(t){const m=Math.round((Date.now()-t)/60000);if(m<1)return 'przed chwilą';if(m<60)return m+' min temu';const h=Math.round(m/60);if(h<48)return h+' godz. temu';return Math.round(h/24)+' dni temu'}
+function renderPOI(){
+  camLayer.clearLayers();fuelLayer.clearLayers();zabkaLayer.clearLayers();
+  const z=map.getZoom(),b=map.getBounds().pad(0.15);
+  if(S.camOn&&z>=11){
+    let n=0;
+    for(const c of camAll){
+      if(n>500)break;if(!b.contains([c.lat,c.lon]))continue;n++;
+      const t=CAMT[c.type]||CAMT.fixed;
+      const ic=L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,30],html:`<div class="cam ${t.c} ${c.src==='user'?'user':''}"><i>${t.ic}</i></div>`});
+      const m=L.marker([c.lat,c.lon],{icon:ic}).addTo(camLayer);
+      let h=`<b>${t.n}</b>`+(c.max?`<br>Limit: ${c.max} km/h`:'')+(c.src==='user'?'<br><i>Dodany przez Ciebie</i><br><button class="btn" data-delcam="'+esc(c.id)+'">Usuń</button>':'');
+      m.bindPopup(h);
+    }
+  }
+  if(z>=13){
+    let nf=0,nz=0;
+    for(const k in cells){
+      const c=cells[k];
+      if(S.fuelOn)for(const f of c.fuel){
+        if(nf>400)break;if(!b.contains([f.lat,f.lon]))continue;nf++;
+        const pr=prices[f.id],p=pr&&pr.p[S.fuel];
+        let cls='fuel',txt='<span>⛽</span>';
+        if(p){const old=Date.now()-p.t>7*86400e3;cls='fuel'+(old?' old':'');txt+=`<b>${fmtPrice(p.v)}</b>`}else cls='fuel none';
+        const ic=L.divIcon({className:'',iconSize:[0,0],iconAnchor:[14,12],html:`<div class="${cls}">${txt}</div>`});
+        L.marker([f.lat,f.lon],{icon:ic}).addTo(fuelLayer).on('click',()=>openStation(f));
+      }
+      if(S.zabkaOn)for(const f of c.zabka){
+        if(nz>400)break;if(!b.contains([f.lat,f.lon]))continue;nz++;
+        const ic=L.divIcon({className:'',iconSize:[26,26],iconAnchor:[13,13],html:'<div class="zab">Ż</div>'});
+        L.marker([f.lat,f.lon],{icon:ic}).addTo(zabkaLayer).on('click',()=>openPlace({title:f.name,sub:[f.addr,f.hours?'Godziny: '+f.hours:''].filter(Boolean).join(' · ')||'Sklep Żabka',lat:f.lat,lon:f.lon}));
+      }
+    }
+  }
+}
+function renderReports(){
+  repLayer.clearLayers();
+  const now=Date.now();
+  reports.forEach(r=>{
+    if(r.exp<=now)return;
+    const t=RT[r.type];if(!t)return;
+    const ic=L.divIcon({className:'',iconSize:[36,36],iconAnchor:[18,18],html:`<div class="rep">${t.ic}</div>`});
+    L.marker([r.lat,r.lon],{icon:ic}).addTo(repLayer)
+      .bindPopup(`<b>${t.n}</b><br>${ago(r.t)} · potwierdzeń: ${r.up}<br><button class="btn" data-vote="1" data-rid="${esc(r.id)}">Nadal tu jest</button><button class="btn" data-vote="-1" data-rid="${esc(r.id)}">Już nie ma</button>`);
+  });
+}
+function renderSavedMarkers(){
+  savedLayer.clearLayers();
+  saved.forEach(s=>{
+    const ic=L.divIcon({className:'',iconSize:[26,26],iconAnchor:[13,13],html:'<div class="sav">★</div>'});
+    L.marker([s.lat,s.lon],{icon:ic}).addTo(savedLayer).on('click',()=>openPlace({title:s.name,sub:'Zapisane miejsce',lat:s.lat,lon:s.lon}));
+  });
+}
+map.on('moveend zoomend',()=>{clearTimeout(map._rt);map._rt=setTimeout(()=>{renderPOI();ensureView();sync(false)},250)});
+
+document.addEventListener('click',e=>{
+  const el=e.target.closest?e.target.closest('[data-vote],[data-delcam]'):null;if(!el)return;
+  if(el.dataset.delcam){userCams=userCams.filter(c=>c.id!==el.dataset.delcam);jset('fa.user',userCams);rebuild();map.closePopup();toast('Usunięto punkt');return}
+  vote(el.dataset.rid,parseInt(el.dataset.vote,10));
+});
+
+/* ---------- serwer: licznik online, zgłoszenia, ceny ---------- */
+const base=()=>(S.server||'').trim().replace(/\/+$/,'');
+async function api(path,body){
+  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),12000);
+  try{
+    const r=await fetch(base()+path,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),signal:ctl.signal});
+    if(!r.ok)throw new Error('http '+r.status);
+    return await r.json();
+  }finally{clearTimeout(to)}
+}
+let lastSync=0,syncBusy=false,syncTimer=null;
+function setOnline(n){
+  const el=$('#online');
+  if(n==null){el.classList.remove('on');$('#onT').textContent='offline'}
+  else{el.classList.add('on');$('#onT').textContent=n+' online'}
+}
+async function sync(force){
+  if(document.hidden||started===false)return;
+  const now=Date.now();
+  if(syncBusy||(!force&&now-lastSync<4000))return;
+  syncBusy=true;lastSync=now;
+  try{
+    const b=map.getBounds().pad(0.3);
+    const j=await api('/api/ping',{id:cid,lat:me?me.lat:null,lon:me?me.lon:null,bbox:[b.getSouth(),b.getWest(),b.getNorth(),b.getEast()]});
+    setOnline(j.online);
+    reports=j.reports||[];
+    (j.prices||[]).forEach(p=>{prices[p.sid]=p});
+    renderReports();renderPOI();
+  }catch(e){setOnline(null)}
+  syncBusy=false;
+}
+function leave(){try{const u=base()+'/api/leave';const d=JSON.stringify({id:cid});if(!(navigator.sendBeacon&&navigator.sendBeacon(u,new Blob([d],{type:'text/plain'}))))fetch(u,{method:'POST',body:d,keepalive:true,headers:{'Content-Type':'text/plain'}}).catch(()=>{})}catch(e){}}
+function startSync(){clearInterval(syncTimer);syncTimer=setInterval(()=>sync(true),15000);sync(true)}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){clearInterval(syncTimer);if(started)leave()}
+  else{if(started)startSync();if(watchId!=null||demoTimer)keepAwake()}
+});
+window.addEventListener('pagehide',()=>{if(started)leave()});
+
+async function vote(rid,v){
+  try{await api('/api/vote',{id:cid,rid,v});toast(v>0?'Dzięki, potwierdzone':'Dzięki, zgłoszone jako nieaktualne');map.closePopup();sync(true)}
+  catch(e){toast('Nie udało się wysłać. Brak połączenia z serwerem.')}
+}
+async function sendReport(type){
+  closeSheets();
+  if(type==='fixedlocal'){
+    const c=me?{lat:me.lat,lon:me.lon}:{lat:map.getCenter().lat,lon:map.getCenter().lng};
+    userCams.push({id:'u'+Date.now(),lat:c.lat,lon:c.lon,type:'fixed',max:null,src:'user'});jset('fa.user',userCams);rebuild();toast('Dodano punkt tylko dla Ciebie');return;
+  }
+  const c=me?{lat:me.lat,lon:me.lon}:{lat:map.getCenter().lat,lon:map.getCenter().lng};
+  try{
+    const j=await api('/api/report',{id:cid,type,lat:c.lat,lon:c.lon});
+    if(j.report){reports=reports.filter(r=>r.id!==j.report.id);reports.push(j.report);renderReports()}
+    toast(j.merged?'Takie zgłoszenie już było. Dodano potwierdzenie.':'Zgłoszenie wysłane. Dzięki!');
+  }catch(e){toast('Nie udało się wysłać. Sprawdź połączenie lub adres serwera w ustawieniach.')}
+}
+(function buildReportGrid(){
+  const g=$('#repGrid');
+  Object.keys(RT).forEach(k=>{const b=document.createElement('button');b.className='opt';b.innerHTML=`<span>${RT[k].ic}</span>${esc(RT[k].n)}`;b.onclick=()=>sendReport(k);g.appendChild(b)});
+  const b=document.createElement('button');b.className='opt';b.innerHTML='<span>📌</span>Brakujący stały fotoradar (tylko u mnie)';b.onclick=()=>sendReport('fixedlocal');g.appendChild(b);
+})();
+
+/* ---------- limity prędkości z OpenStreetMap ---------- */
+let roads=null,roadsAt=null,roadsBusy=false,roadsFail=0;
+function parseMs(v){
+  if(v==null)return null;v=String(v).trim().toLowerCase();
+  let m=v.match(/^(\d{1,3})\s*(mph)?$/);if(m)return Math.round(parseInt(m[1],10)*(m[2]?1.609:1));
+  if(v==='pl:urban')return 50;if(v==='pl:rural')return 90;if(v==='pl:motorway')return 140;if(v==='pl:expressway')return 120;
+  if(v==='none')return -1;
+  return null;
+}
+function prepWay(w){
+  const t=w.tags||{},g=w.geometry.map(p=>[p.lat,p.lon]);
+  let s=90,n=-90,e=-180,ww=180;
+  g.forEach(p=>{if(p[0]<s)s=p[0];if(p[0]>n)n=p[0];if(p[1]<ww)ww=p[1];if(p[1]>e)e=p[1]});
+  return {id:w.id,hw:t.highway,ms:parseMs(t.maxspeed),mf:parseMs(t['maxspeed:forward']),mb:parseMs(t['maxspeed:backward']),g,s,n,w:ww,e};
+}
+function ensureRoads(lat,lon){
+  if(roadsBusy)return;
+  if(roadsAt&&dist(lat,lon,roadsAt.lat,roadsAt.lon)<500)return;
+  if(roadsFail&&Date.now()-roadsFail<30000)return;
+  roadsBusy=true;
+  const q=`[out:json][timeout:40];way(around:1300,${lat.toFixed(5)},${lon.toFixed(5)})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];out tags geom;`;
+  ovp(q,true).then(j=>{roads=(j.elements||[]).filter(w=>w.geometry&&w.geometry.length>1).map(prepWay);roadsAt={lat,lon};roadsFail=0})
+    .catch(()=>{roadsFail=Date.now()}).finally(()=>{roadsBusy=false});
+}
+function segDist(lat,lon,a,b){ // odległość w metrach od punktu do odcinka, plus parametr t
+  const kx=111320*Math.cos(rad(lat)),ky=110540;
+  const ax=(a[1]-lon)*kx,ay=(a[0]-lat)*ky,bx=(b[1]-lon)*kx,by=(b[0]-lat)*ky;
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  let t=l2?((-ax)*dx+(-ay)*dy)/l2:0;t=clamp(t,0,1);
+  return {d:Math.hypot(ax+t*dx,ay+t*dy),t,len:Math.sqrt(l2),sb:(deg(Math.atan2(dx,dy))+360)%360};
+}
+function matchRoad(lat,lon,hd){
+  if(!roads)return null;
+  let best=null;
+  for(const w of roads){
+    if(lat<w.s-0.0004||lat>w.n+0.0004||lon<w.w-0.0006||lon>w.e+0.0006)continue;
+    for(let i=0;i<w.g.length-1;i++){
+      const r=segDist(lat,lon,w.g[i],w.g[i+1]);
+      if(r.d>30)continue;
+      let fwd=true;
+      if(hd!=null){const df=adiff(r.sb,hd);if(df<=40)fwd=true;else if(df>=140)fwd=false;else continue}
+      if(!best||r.d<best.d)best={w,d:r.d,fwd};
+    }
+  }
+  return best;
+}
+function limitOf(m){
+  const w=m.w;
+  let v=m.fwd?(w.mf!=null?w.mf:w.ms):(w.mb!=null?w.mb:w.ms);
+  if(v===-1)return null;
+  if(v!=null)return {v,est:false};
+  if(w.hw==='motorway')return {v:140,est:true};
+  if(w.hw==='living_street')return {v:20,est:true};
+  if(w.hw==='residential')return {v:50,est:true};
+  return null;
+}
+let cand=null,candN=0,shownLim=null;
+function updateLimit(){
+  const m=matchRoad(me.lat,me.lon,(me.spd>1.5&&me.hd!=null)?me.hd:null);
+  let lim=null,id=null;
+  if(m){lim=limitOf(m);id=m.w.id+(m.fwd?'f':'b')+(lim?lim.v:'x')}
+  if(id===cand)candN++;else{cand=id;candN=1}
+  if(candN>=(id==null?4:2))shownLim=lim;
+  const el=$('#limitSign');
+  if(shownLim){
+    const k=S.mi?0.621371:1;
+    el.textContent=Math.round(shownLim.v*k);el.classList.add('on');el.classList.toggle('est',shownLim.est);
+    el.title=shownLim.est?'Szacowany limit (brak znaku w danych)':'Ograniczenie prędkości';
+  }else el.classList.remove('on');
+}
+
+/* ---------- pozycja ---------- */
+let me=null,last=null,watchId=null,demoTimer=null,simTimer=null,wake=null,started=false;
+function onPos(p){
+  const now=Date.now();
+  let spd=p.speed,hd=p.heading;
+  if(last){
+    const d=dist(last.lat,last.lon,p.lat,p.lon),dt=(now-last.t)/1000;
+    if((spd==null||isNaN(spd))&&dt>0)spd=d/dt;
+    if((hd==null||isNaN(hd))&&d>8)hd=bearing(last.lat,last.lon,p.lat,p.lon);
+    if(d<8&&last.hd!=null&&(hd==null||isNaN(hd)))hd=last.hd;
+  }
+  spd=spd==null||isNaN(spd)?0:spd;
+  me={lat:p.lat,lon:p.lon,spd,hd:(hd==null||isNaN(hd))?null:hd,t:now};
+  last={lat:p.lat,lon:p.lon,t:now,hd:me.hd};
+  if(!map.hasLayer(meMarker))meMarker.addTo(map);
+  meMarker.setLatLng([p.lat,p.lon]);
+  const ar=document.getElementById('arrow');if(ar&&me.hd!=null)ar.setAttribute('transform',`rotate(${me.hd} 13 13)`);
+  if(follow)map.setView([p.lat,p.lon],Math.max(map.getZoom(),nav?(spd>14?16:17):(spd>14?15:16)),{animate:true});
+  showSpeed();
+  if(!p.demo){ensureNearMe();ensureRoads(p.lat,p.lon)}
+  updateLimit();
+  if(nav)navTick();
+  check();
+}
+function showSpeed(){
+  const k=S.mi?0.621371:1;
+  $('#spV').textContent=Math.round(me.spd*3.6*k);
+  $('#spU').textContent=S.mi?'mph':'km/h';
+  $('#speed').classList.toggle('over',!!(shownLim&&me.spd*3.6>shownLim.v+1));
+}
+
+/* ---------- ostrzeżenia ---------- */
+let active=null,lastBeep=0;
+const alerted={};
+function check(){
+  if(!me)return;
+  const kmh=me.spd*3.6;
+  const radius=Math.min(900,Math.max(250,me.spd*12));
+  let best=null;
+  const consider=it=>{
+    const d=dist(me.lat,me.lon,it.lat,it.lon);
+    if(d>radius*1.6){delete alerted[it.id];return}
+    if(d>radius)return;
+    if(kmh>8&&me.hd!=null){if(adiff(bearing(me.lat,me.lon,it.lat,it.lon),me.hd)>60)return}
+    else if(d>150)return;
+    if(!best||d<best.d)best={it,d};
+  };
+  if(S.camOn)camAll.forEach(c=>consider({id:c.id,lat:c.lat,lon:c.lon,kind:'cam',type:c.type,max:c.max}));
+  const now=Date.now();
+  reports.forEach(r=>{if(r.exp>now&&RT[r.type])consider({id:'r'+r.id,lat:r.lat,lon:r.lon,kind:'rep',type:r.type,t:r.t})});
+  if(!best){hideAlert();return}
+  const {it,d}=best;
+  const lab=it.kind==='cam'?(CAMT[it.type]||CAMT.fixed):RT[it.type];
+  const name=it.kind==='cam'?lab.n:lab.n;
+  const over=it.kind==='cam'&&it.max&&kmh>it.max+2;
+  showAlert(it,d,lab,name,over);
+  if(!alerted[it.id]){alerted[it.id]=true;announce(it,d,name)}
+  else if(d<120&&Date.now()-lastBeep>1500){beep(1);lastBeep=Date.now()}
+}
+function fmtD(d){
+  if(S.mi){const ft=d*3.28084;return ft>1000?(d/1609.34).toFixed(1)+' mi':Math.round(ft/10)*10+' ft'}
+  return d>=1000?(d/1000).toFixed(1)+' km':Math.round(d/10)*10+' m';
+}
+function showAlert(it,d,lab,name,over){
+  const a=$('#alert');a.classList.add('on');
+  a.classList.toggle('danger',!!over);a.classList.toggle('pulse',d<200);
+  $('#aI').textContent=lab.ic;$('#aT').textContent=name;$('#aD').textContent=fmtD(d);
+  $('#aS').textContent=it.kind==='cam'?(it.max?(over?`Zwolnij! Limit ${it.max} km/h`:`Limit ${it.max} km/h`):'Jedź przepisowo'):('Zgłoszone przez kierowców '+ago(it.t));
+  active=it;
+}
+function hideAlert(){if(!active)return;active=null;$('#alert').classList.remove('on','danger','pulse')}
+let ac=null;
+function unlockAudio(){
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume()}catch(e){}
+  try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}
+}
+function beep(n){
+  if(!S.sound||!ac)return;
+  for(let i=0;i<n;i++){
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type='square';o.frequency.value=i%2?1100:880;
+    g.gain.setValueAtTime(.0001,ac.currentTime+i*.22);
+    g.gain.exponentialRampToValueAtTime(.35,ac.currentTime+i*.22+.02);
+    g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+i*.22+.18);
+    o.connect(g).connect(ac.destination);o.start(ac.currentTime+i*.22);o.stop(ac.currentTime+i*.22+.2);
+  }
+}
+function say(txt,urgent){
+  if(!S.voice||!('speechSynthesis' in window))return;
+  try{const u=new SpeechSynthesisUtterance(txt);u.lang='pl-PL';u.rate=1.05;if(urgent)speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}
+}
+function announce(it,d,name){
+  beep(3);
+  if(S.vib&&navigator.vibrate)navigator.vibrate([200,100,200]);
+  const m=Math.round(d/50)*50;
+  say(`${name} za ${m} metrów`+(it.max?`. Limit ${it.max}`:''),true);
+}
+
+/* ---------- GPS i demo ---------- */
+function startGeo(){
+  if(!('geolocation' in navigator)){toast('Brak GPS w tej przeglądarce');return}
+  stopDemo();stopSim();
+  if(watchId!=null)navigator.geolocation.clearWatch(watchId);
+  watchId=navigator.geolocation.watchPosition(
+    pos=>onPos({lat:pos.coords.latitude,lon:pos.coords.longitude,speed:pos.coords.speed,heading:pos.coords.heading}),
+    err=>toast(err.code===1?'Zezwól na lokalizację w ustawieniach przeglądarki':'Szukam sygnału GPS…'),
+    {enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+  keepAwake();
+}
+async function keepAwake(){try{if('wakeLock' in navigator)wake=await navigator.wakeLock.request('screen')}catch(e){}}
+function startDemo(){
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null}
+  stopDemo();stopSim();
+  const c=me?{lat:me.lat,lng:me.lon}:map.getCenter();
+  const lon=c.lng;let lat=c.lat;
+  demoCam={id:'demo',lat:lat+0.0125,lon,type:'fixed',max:50,src:'demo'};
+  delete alerted.demo;rebuild();follow=true;last=null;
+  demoTimer=setInterval(()=>{
+    lat+=(62/3.6)/111320;
+    onPos({lat,lon,speed:62/3.6,heading:0,demo:true});
+    if(lat>demoCam.lat+0.0008)stopDemo();
+  },1000);
+  keepAwake();toast('Demo: jedziesz 62 km/h w stronę fotoradaru z limitem 50');
+}
+function stopDemo(){
+  if(demoTimer){clearInterval(demoTimer);demoTimer=null}
+  if(demoCam){demoCam=null;rebuild();hideAlert()}
+}
+function stopSim(){if(simTimer){clearInterval(simTimer);simTimer=null}}
+
+/* ---------- wyszukiwanie ---------- */
+const NOM='https://nominatim.openstreetmap.org';
+$('#searchRow').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const q=$('#q').value.trim();if(!q)return;
+  $('#q').blur();
+  const box=$('#results');box.hidden=false;box.innerHTML='<div class="res none">Szukam…</div>';
+  try{
+    const b=map.getBounds().pad(2);
+    const url=`${NOM}/search?format=jsonv2&addressdetails=1&limit=6&accept-language=pl&q=${encodeURIComponent(q)}&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`;
+    const r=await fetch(url);if(!r.ok)throw new Error('nom '+r.status);
+    const j=await r.json();
+    if(!j.length){box.innerHTML='<div class="res none">Nic nie znaleziono. Spróbuj dopisać miasto.</div>';return}
+    box.innerHTML='';
+    j.forEach(x=>{
+      const parts=(x.display_name||'').split(',').map(s=>s.trim());
+      const title=x.name||parts[0]||q,sub=parts.slice(1,4).join(', ');
+      const b=document.createElement('button');b.className='res';b.type='button';
+      b.innerHTML=`<b>${esc(title)}</b><span>${esc(sub)}</span>`;
+      b.onclick=()=>{box.hidden=true;const lat=parseFloat(x.lat),lon=parseFloat(x.lon);follow=false;map.setView([lat,lon],16);openPlace({title:title+(parts[1]&&x.type!=='city'&&x.type!=='town'?', '+parts[1]:''),sub,lat,lon})};
+      box.appendChild(b);
+    });
+  }catch(err){box.innerHTML='<div class="res none">Wyszukiwarka nie odpowiada. Sprawdź internet.</div>'}
+});
+$('#q').addEventListener('input',()=>{if(!$('#q').value)$('#results').hidden=true});
+async function reverse(lat,lon){
+  try{
+    const r=await fetch(`${NOM}/reverse?format=jsonv2&zoom=18&accept-language=pl&lat=${lat}&lon=${lon}`);
+    if(!r.ok)throw 0;const j=await r.json(),a=j.address||{};
+    const street=[a.road,a.house_number].filter(Boolean).join(' ');
+    const city=a.city||a.town||a.village||a.municipality||'';
+    const title=[street,city].filter(Boolean).join(', ')||(j.display_name||'').split(',').slice(0,2).join(',');
+    return title||null;
+  }catch(e){return null}
+}
+map.on('contextmenu',async e=>{
+  const {lat,lng}=e.latlng;
+  openPlace({title:'Wybrane miejsce',sub:`${lat.toFixed(5)}, ${lng.toFixed(5)}`,lat,lon:lng});
+  const t=await reverse(lat,lng);
+  if(t&&place&&place.lat===lat&&place.lon===lng&&!place.kind){place.title=t;const h=$('#shPlace h2');if(h)h.textContent=t}
+});
+
+/* ---------- panel miejsca, stacje, zapisane ---------- */
+let place=null;
+function openSheet(id){closeSheets(true);$(id).classList.add('on');$('#scrim').classList.add('on')}
+function closeSheets(keepSel){
+  document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('on'));$('#scrim').classList.remove('on');
+  if(keepSel!==true&&selMarker&&!navPreview){map.removeLayer(selMarker);selMarker=null}
+}
+const isSaved=p=>saved.findIndex(s=>Math.abs(s.lat-p.lat)<2e-5&&Math.abs(s.lon-p.lon)<2e-5);
+function fuelHtml(f){
+  const pr=prices[f.id],rows=Object.keys(FT).map(k=>{
+    const p=pr&&pr.p[k];
+    return `<tr><td>${FT[k]}</td><td><b>${p?fmtPrice(p.v)+' zł':'brak danych'}</b></td><td>${p?ago(p.t):''}</td></tr>`;
+  }).join('');
+  return `<table class="ptab">${rows}</table>
+  <h3>Podaj aktualne ceny</h3>
+  <div class="pr"><div><label for="pp95">Benzyna 95</label><input class="inp" id="pp95" inputmode="decimal" placeholder="np. 5,89"></div>
+  <div><label for="ppon">Diesel</label><input class="inp" id="ppon" inputmode="decimal" placeholder="np. 6,01"></div>
+  <div><label for="pplpg">LPG</label><input class="inp" id="pplpg" inputmode="decimal" placeholder="np. 3,05"></div></div>
+  <div class="btns" style="margin-top:8px"><button class="btn" id="pPrice">Wyślij ceny</button></div>`;
+}
+function openStation(f){
+  openPlace({title:f.name,sub:[f.brand&&f.brand!==f.name?f.brand:'',f.addr,f.hours?'Godziny: '+f.hours:''].filter(Boolean).join(' · ')||'Stacja paliw',lat:f.lat,lon:f.lon,kind:'fuel',st:f});
+}
+function openPlace(p){
+  place=p;
+  if(selMarker)map.removeLayer(selMarker);
+  selMarker=L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',iconSize:[30,34],iconAnchor:[15,34],html:'<div class="pin">📍</div>'}),interactive:false}).addTo(map);
+  const sh=$('#shPlace');
+  sh.innerHTML=`<h2>${esc(p.title)}</h2>${p.sub?`<p>${esc(p.sub)}</p>`:''}${p.kind==='fuel'?fuelHtml(p.st):''}
+  <div class="btns"><button class="btn pri" id="pGo">Nawiguj</button><button class="btn" id="pSave">${isSaved(p)>=0?'★ Zapisane':'☆ Zapisz'}</button><button class="btn" id="pX">Zamknij</button></div>`;
+  $('#pGo').onclick=()=>routeTo(p);
+  $('#pSave').onclick=()=>{
+    const i=isSaved(p);
+    if(i>=0){saved.splice(i,1);toast('Usunięto z zapisanych')}
+    else{saved.unshift({id:'s'+Date.now(),name:place.title,lat:p.lat,lon:p.lon});toast('Zapisano miejsce')}
+    jset('fa.saved',saved);renderSavedMarkers();$('#pSave').textContent=isSaved(p)>=0?'★ Zapisane':'☆ Zapisz';
+  };
+  $('#pX').onclick=()=>closeSheets();
+  if(p.kind==='fuel')$('#pPrice').onclick=async()=>{
+    const get=id=>{const v=parseFloat(String($(id).value).replace(',','.'));return isFinite(v)?v:undefined};
+    const pp={pb95:get('#pp95'),on:get('#ppon'),lpg:get('#pplpg')};
+    if(pp.pb95==null&&pp.on==null&&pp.lpg==null){toast('Wpisz przynajmniej jedną cenę');return}
+    try{
+      const j=await api('/api/price',{id:cid,sid:p.st.id,lat:p.st.lat,lon:p.st.lon,name:p.st.name,p:pp});
+      if(j.price)prices[p.st.id]=j.price;
+      toast('Ceny zapisane. Dzięki!');renderPOI();openStation(p.st);
+    }catch(e){toast('Nie udało się wysłać cen. Sprawdź serwer.')}
+  };
+  openSheet('#shPlace');
+}
+function renderSaved(){
+  const box=$('#savedList');
+  if(!saved.length){box.innerHTML='<p>Nic jeszcze nie zapisałeś.</p>';return}
+  box.innerHTML='';
+  saved.forEach(s=>{
+    const d=document.createElement('div');d.className='sv';
+    d.innerHTML=`<button class="nm">★ ${esc(s.name)}</button><button class="btn pri" data-a="go">Nawiguj</button><button class="btn bad" data-a="del" aria-label="Usuń">✕</button>`;
+    d.querySelector('.nm').onclick=()=>{closeSheets();follow=false;map.setView([s.lat,s.lon],16);openPlace({title:s.name,sub:'Zapisane miejsce',lat:s.lat,lon:s.lon})};
+    d.querySelector('[data-a=go]').onclick=()=>{closeSheets();routeTo({title:s.name,lat:s.lat,lon:s.lon})};
+    d.querySelector('[data-a=del]').onclick=()=>{saved=saved.filter(x=>x.id!==s.id);jset('fa.saved',saved);renderSavedMarkers();renderSaved()};
+    box.appendChild(d);
+  });
+}
+
+/* ---------- nawigacja ---------- */
+let nav=null,navPreview=false,lastReroute=0;
+const ROUTERS=['https://routing.openstreetmap.de/routed-car/route/v1/driving/','https://router.project-osrm.org/route/v1/driving/'];
+async function fetchRoute(from,to){
+  let err;
+  for(const u of ROUTERS){
+    try{
+      const r=await fetch(`${u}${from.lon},${from.lat};${to.lon},${to.lat}?overview=full&geometries=geojson&steps=true`);
+      if(!r.ok)throw new Error('route '+r.status);
+      const j=await r.json();
+      if(j.code!=='Ok'||!j.routes||!j.routes[0])throw new Error('no route');
+      return j.routes[0];
+    }catch(e){err=e}
+  }
+  throw err;
+}
+function buildNav(route,dest){
+  const coords=route.geometry.coordinates.map(c=>[c[1],c[0]]);
+  const cum=[0];for(let i=1;i<coords.length;i++)cum.push(cum[i-1]+dist(coords[i-1][0],coords[i-1][1],coords[i][0],coords[i][1]));
+  const steps=[].concat(...route.legs.map(l=>l.steps));
+  const mcum=[];let acc=0;steps.forEach(s=>{mcum.push(acc);acc+=s.distance});
+  const scale=cum[cum.length-1]>0?route.distance/cum[cum.length-1]:1;
+  return {dest,route,coords,cum,steps,mcum,scale,total:route.distance,dur:route.duration,idx:0,stepI:0,off:0,said1:{},said2:{}};
+}
+function drawRoute(n){
+  routeLayer.clearLayers();
+  L.polyline(n.coords,{color:'#0b3d91',weight:11,opacity:.9}).addTo(routeLayer);
+  L.polyline(n.coords,{color:'#5aa2ff',weight:6,opacity:1}).addTo(routeLayer);
+}
+function fmtDur(s){const m=Math.max(1,Math.round(s/60));return m<60?m+' min':Math.floor(m/60)+' godz. '+(m%60)+' min'}
+async function routeTo(dest){
+  if(!me){toast('Czekam na pozycję GPS. Włącz lokalizację lub użyj trybu demo.');return}
+  const sh=$('#shPlace');
+  sh.innerHTML=`<h2>${esc(dest.title)}</h2><p>Szukam trasy…</p>`;
+  try{
+    const route=await fetchRoute(me,dest);
+    const n=buildNav(route,dest);
+    drawRoute(n);navPreview=true;
+    map.fitBounds(L.polyline(n.coords).getBounds(),{padding:[60,60]});follow=false;
+    sh.innerHTML=`<h2>${esc(dest.title)}</h2><p style="font-size:16px;color:var(--fg)"><b>${fmtD(route.distance)}</b> · ${fmtDur(route.duration)}</p>
+    <div class="btns"><button class="btn pri" id="rGo">Start</button><button class="btn" id="rSim">Symulacja jazdy</button><button class="btn" id="rX">Anuluj</button></div>`;
+    $('#rGo').onclick=()=>{navPreview=false;beginNav(n)};
+    $('#rSim').onclick=()=>{navPreview=false;beginNav(n);simulate(n)};
+    $('#rX').onclick=()=>{navPreview=false;routeLayer.clearLayers();closeSheets()};
+  }catch(e){
+    sh.innerHTML=`<h2>${esc(dest.title)}</h2><p>Nie udało się wyznaczyć trasy. Sprawdź internet i spróbuj ponownie.</p><div class="btns"><button class="btn" id="rX2">Zamknij</button></div>`;
+    $('#rX2').onclick=()=>closeSheets();
+  }
+}
+function beginNav(n){
+  nav=n;closeSheets();
+  $('#searchRow').hidden=true;$('#results').hidden=true;$('#nav').hidden=false;
+  follow=true;
+  if(me)map.setView([me.lat,me.lon],17);
+  say('Rozpoczynam nawigację',false);
+  navTick();
+}
+function endNav(msg){
+  nav=null;stopSim();routeLayer.clearLayers();
+  $('#nav').hidden=true;$('#searchRow').hidden=false;
+  if(msg){toast(msg);}
+}
+$('#nX').onclick=()=>endNav('Zakończono nawigację');
+const MOD={'left':'w lewo','right':'w prawo','slight left':'lekko w lewo','slight right':'lekko w prawo','sharp left':'ostro w lewo','sharp right':'ostro w prawo','straight':'prosto','uturn':'zawróć'};
+function instr(s){
+  const m=s.maneuver||{},mod=MOD[m.modifier]||'',nm=s.name?(' – '+s.name):'';
+  switch(m.type){
+    case 'depart':return 'Ruszaj'+nm;
+    case 'arrive':return 'Dojechałeś do celu';
+    case 'turn':return (m.modifier==='uturn'?'Zawróć':'Skręć '+mod)+nm;
+    case 'end of road':return 'Na końcu drogi skręć '+mod+nm;
+    case 'fork':return 'Na rozwidleniu trzymaj się '+(/left/.test(m.modifier||'')?'lewej':'prawej')+nm;
+    case 'merge':return 'Włącz się do ruchu'+nm;
+    case 'on ramp':return 'Wjedź na rampę'+nm;
+    case 'off ramp':return 'Zjedź z drogi'+nm;
+    case 'roundabout':case 'rotary':return 'Na rondzie zjedź '+(m.exit?m.exit+'. zjazdem':'')+nm;
+    case 'roundabout turn':return 'Na rondzie skręć '+mod+nm;
+    case 'continue':case 'new name':return (mod&&m.modifier!=='straight'?'Jedź '+mod:'Jedź prosto')+nm;
+    default:return (mod?'Jedź '+mod:'Jedź prosto')+nm;
+  }
+}
+function arrowOf(s){
+  const m=s.maneuver||{};
+  if(m.type==='arrive')return '⚑';
+  if(m.type==='roundabout'||m.type==='rotary'||m.type==='roundabout turn')return '⟳';
+  return ({'left':'↰','right':'↱','slight left':'↖','slight right':'↗','sharp left':'↙','sharp right':'↘','straight':'↑','uturn':'⮌'})[m.modifier]||'↑';
+}
+function routeProgress(lat,lon){
+  const n=nav,c=n.coords;
+  const scan=(a,b)=>{let best=null;for(let i=Math.max(0,a);i<Math.min(c.length-1,b);i++){const r=segDist(lat,lon,c[i],c[i+1]);if(!best||r.d<best.d)best={d:r.d,i,prog:n.cum[i]+r.t*r.len}}return best};
+  let b=scan(n.idx-2,n.idx+120);
+  if(!b||b.d>50)b=scan(0,c.length);
+  return b;
+}
+function navTick(){
+  const n=nav;if(!n||!me)return;
+  const b=routeProgress(me.lat,me.lon);if(!b)return;
+  n.idx=b.i;
+  if(b.d>50&&me.spd>2){n.off++}else n.off=0;
+  if(n.off>=3&&Date.now()-lastReroute>12000){
+    lastReroute=Date.now();n.off=0;say('Przeliczam trasę',false);
+    fetchRoute(me,n.dest).then(r=>{if(nav!==n)return;const nn=buildNav(r,n.dest);nav=nn;drawRoute(nn)}).catch(()=>{});
+  }
+  const progM=b.prog*n.scale,remain=Math.max(0,n.total-progM);
+  let k=n.stepI;while(k<n.steps.length-1&&n.mcum[k]<=progM+5)k++;
+  n.stepI=k;
+  const s=n.steps[k],dNext=Math.max(0,n.mcum[k]-progM);
+  $('#nArr').textContent=arrowOf(s);
+  $('#nD').textContent=fmtD(dNext);
+  $('#nT').textContent=instr(s);
+  const eta=new Date(Date.now()+(n.dur*remain/Math.max(1,n.total))*1000);
+  $('#nS').textContent=`${fmtD(remain)} · ${fmtDur(n.dur*remain/Math.max(1,n.total))} · ${String(eta.getHours()).padStart(2,'0')}:${String(eta.getMinutes()).padStart(2,'0')}`;
+  const far=clamp(me.spd*12,150,600);
+  if(s.maneuver&&s.maneuver.type!=='arrive'){
+    if(dNext<=far&&dNext>70&&!n.said1[k]){n.said1[k]=1;say(`Za ${Math.round(dNext/50)*50} metrów, ${instr(s)}`,false)}
+    if(dNext<=45&&!n.said2[k]){n.said2[k]=1;say(instr(s),false)}
+  }
+  if(remain<35){say('Dojechałeś do celu',false);endNav('Dojechałeś do celu')}
+}
+function simulate(n){
+  stopSim();stopDemo();
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null}
+  let d=0;last=null;
+  simTimer=setInterval(()=>{
+    d+=15;const total=n.cum[n.cum.length-1];
+    if(d>=total){stopSim();return}
+    let i=1;while(i<n.cum.length-1&&n.cum[i]<d)i++;
+    const a=n.coords[i-1],b=n.coords[i],seg=n.cum[i]-n.cum[i-1]||1,t=(d-n.cum[i-1])/seg;
+    onPos({lat:a[0]+(b[0]-a[0])*t,lon:a[1]+(b[1]-a[1])*t,speed:15,heading:bearing(a[0],a[1],b[0],b[1])});
+  },1000);
+  toast('Symulacja jazdy: 54 km/h');
+}
+
+/* ---------- interfejs ---------- */
+$('#scrim').onclick=()=>{if(navPreview){navPreview=false;routeLayer.clearLayers()}closeSheets()};
+$('#bClose').onclick=()=>closeSheets();
+$('#bReport').onclick=()=>openSheet('#shReport');
+$('#bSaved').onclick=()=>{renderSaved();openSheet('#shSaved')};
+$('#bSet').onclick=()=>{
+  $('#oSound').checked=S.sound;$('#oVoice').checked=S.voice;$('#oVib').checked=S.vib;$('#oNight').checked=S.night;$('#oMi').checked=S.mi;
+  $('#oCam').checked=S.camOn;$('#oFuel').checked=S.fuelOn;$('#oZab').checked=S.zabkaOn;$('#oFt').value=S.fuel;$('#oSrv').value=S.server||'';
+  openSheet('#shSet');
+};
+$('#bLocate').onclick=()=>{follow=true;if(me)map.setView([me.lat,me.lon],16);else toast('Czekam na pozycję GPS…')};
+[['#oSound','sound'],['#oVoice','voice'],['#oVib','vib'],['#oNight','night'],['#oMi','mi'],['#oCam','camOn'],['#oFuel','fuelOn'],['#oZab','zabkaOn']].forEach(([s,k])=>{
+  $(s).onchange=e=>{S[k]=e.target.checked;jset('fa.s',S);applyTheme();if(me)showSpeed();renderPOI()};
+});
+$('#oFt').onchange=e=>{S.fuel=e.target.value;jset('fa.s',S);renderPOI()};
+$('#bSrv').onclick=()=>{S.server=$('#oSrv').value.trim();jset('fa.s',S);setOnline(null);sync(true);toast('Zapisano adres serwera')};
+$('#bRefresh').onclick=()=>{roadsAt=null;roadsFail=0;ensureView(true);ensureNearMe();sync(true);toast('Odświeżam dane mapy…')};
+$('#bDemo').onclick=()=>{closeSheets();unlockAudio();startDemo()};
+function begin(){started=true;$('#start').style.display='none';startSync();ensureView();setTimeout(()=>toast('Przytrzymaj mapę, aby wybrać miejsce'),1500)}
+$('#bGo').onclick=()=>{unlockAudio();begin();startGeo()};
+$('#bDemo2').onclick=()=>{unlockAudio();begin();startDemo()};
+
+applyTheme();rebuild();renderSavedMarkers();setOnline(null);
+if(Object.keys(cells).length){const k=Object.keys(cells).sort((a,b)=>cells[b].t-cells[a].t)[0].split(':');map.setView([(parseInt(k[0],10)+0.5)*CELL,(parseInt(k[1],10)+0.5)*CELL],14)}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
+})();
+</script>
+</body>
+</html>
