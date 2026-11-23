@@ -30,6 +30,22 @@
   --shadow:0 8px 24px #1b2b4033;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--p1:#4be28a;--p1b:#3ddc8429;--p2:#ffd23f;--p2b:#ffd23f26;--p3:#ff9a3d;--p3b:#ff9a3d2b;--p4:#ff6b6b;--p4b:#ff4d4d33}
+:root.day{--p1:#15803d;--p1b:#15803d1f;--p2:#8a6a00;--p2b:#d9a40033;--p3:#b85a00;--p3b:#e0700026;--p4:#c62828;--p4b:#c6282822}
+.pc1{color:var(--p1);background:var(--p1b)}.pc2{color:var(--p2);background:var(--p2b)}.pc3{color:var(--p3);background:var(--p3b)}.pc4{color:var(--p4);background:var(--p4b)}
+.ecoBig{border-radius:14px;padding:10px 14px;margin:0 0 12px;font-size:15px;font-weight:700}.ecoBig b{font-size:26px;margin-right:6px;font-variant-numeric:tabular-nums}
+#tripLeg{align-self:flex-start;background:var(--panel);color:var(--fg);border-radius:12px;padding:7px 12px;font-size:12px;font-weight:600;box-shadow:var(--shadow);display:flex;flex-wrap:wrap;gap:4px 12px}
+#tripLeg i{display:inline-block;width:18px;height:5px;border-radius:3px;vertical-align:middle;margin-right:5px}
+.rts{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px}
+.rtc{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--fg);border:2px solid transparent;border-radius:14px;padding:10px 12px;cursor:pointer;font:inherit}
+.rtc.on{border-color:var(--blue);background:var(--panel2)}
+.rtc .r1{display:flex;align-items:baseline;gap:8px}.rtc .r1 b{font-size:20px;font-variant-numeric:tabular-nums}.rtc .r1 .dl{font-size:13px;color:var(--mute);font-weight:700}
+.rtc .r2{font-size:13px;color:var(--mute);margin-top:2px}
+.rtc .r3{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.bd{font-size:11px;font-weight:800;padding:3px 8px;border-radius:999px}
+.bd.f{background:#4da3ff30;color:var(--blue)}.bd.e{background:var(--p1b);color:var(--p1)}
+#fNote{font-size:12px;color:var(--p3);margin:6px 0 0}
+
 [hidden]{display:none!important}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden}
 button,input,select{font-family:inherit}
@@ -284,6 +300,7 @@ select.inp{padding:0 6px}
   <div id="results" hidden></div>
   <button id="planChip" hidden></button>
   <button id="tripChip" hidden>Podgląd trasy · zamknij ✕</button>
+  <div id="tripLeg" hidden><span><i style="background:#22c55e"></i>ekonomicznie</span><span><i style="background:#ef4444"></i>zbyt dynamicznie</span><span><i style="background:#4da3ff"></i>umiarkowanie</span></div>
   <div id="nav" hidden>
     <div class="main">
       <div class="ico" id="nIco"></div>
@@ -485,7 +502,7 @@ class Marker{
 }
 class Line{
   constructor(c,o){this.id='fa-line-'+(++uid);this.c=c||[];this.o=Object.assign({color:'#4da3ff',weight:6,opacity:1,lineCap:'round',lineJoin:'round'},o||{});this.map=null}
-  _geo(){return this.c.length>1?{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:this.c.map(p=>{const q=ll(p);return [q.lon,q.lat]})}}:{type:'FeatureCollection',features:[]}}
+  _geo(){if(this.o.multi)return {type:'Feature',properties:{},geometry:{type:'MultiLineString',coordinates:this.c.filter(a=>a.length>1).map(a=>a.map(p=>{const q=ll(p);return [q.lon,q.lat]}))}};return this.c.length>1?{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:this.c.map(p=>{const q=ll(p);return [q.lon,q.lat]})}}:{type:'FeatureCollection',features:[]}}
   _ensure(){
     const m=this.map;if(!m)return;const ml=m.ml;
     try{
@@ -653,7 +670,7 @@ if(!cid||typeof cid!=='string'||cid.length<8){cid=((window.crypto&&crypto.random
 
 /* stan */
 let me=null,last=null,watchId=null,demoTimer=null,simTimer=null,wake=null,started=false,geoWanted=false,simActive=false;
-let nav=null,navPreview=false,follow=true,plan=[],place=null,disp=null,tgt=null,selMarker=null,dragTimer=null;
+let pvTok=0,nav=null,navPreview=false,follow=true,plan=[],place=null,disp=null,tgt=null,selMarker=null,dragTimer=null;
 let reports=[],prices={},demoCam=null,camAll=[],cells=jget('fa.cells',{});
 let fuelNear=null,fuelAt=0,trip=null,trips=jget('fa.trips',[]),tripOpen=null,tripSnapAt=0,tab='map';
 window.__fa={instr:s=>instr(s),addReport:r=>reports.push(r),clearReports:()=>{reports=[]}};
@@ -697,7 +714,7 @@ function isDay(lat,lon,d){
 /* ---------- mapa ---------- */
 const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([52.2297,21.0122],15);
 const zabkaLayer=L.layerGroup().addTo(map),fuelLayer=L.layerGroup().addTo(map),camLayer=L.layerGroup().addTo(map),
-      repLayer=L.layerGroup().addTo(map),savedLayer=L.layerGroup().addTo(map),planLayer=L.layerGroup().addTo(map),routeLayer=L.layerGroup().addTo(map),tripLayer=L.layerGroup().addTo(map);
+      repLayer=L.layerGroup().addTo(map),savedLayer=L.layerGroup().addTo(map),planLayer=L.layerGroup().addTo(map),routeLayer=L.layerGroup().addTo(map),tripLayer=L.layerGroup().addTo(map),altLayer=L.layerGroup().addTo(map);
 const routeCase=L.polyline([],{color:'#031126',weight:12,opacity:.9,lineCap:'round',lineJoin:'round'}).addTo(routeLayer);
 const routeMain=L.polyline([],{color:'#4da3ff',weight:7,opacity:1,lineCap:'round',lineJoin:'round'}).addTo(routeLayer);
 const meIcon=L.divIcon({className:'me',iconSize:[34,34],iconAnchor:[17,17],html:'<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#3d8bff" opacity=".18"/><g id="arrow"><path d="M17 4 L27 29 L17 23 L7 29 Z" fill="#2f7df6" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></g></svg>'});
@@ -1453,19 +1470,49 @@ $('#plClr').onclick=()=>{plan=[];renderPlanUI();closeSheets()};
 
 /* ---------- nawigacja ---------- */
 const ROUTERS=['https://routing.openstreetmap.de/routed-car/route/v1/driving/','https://router.project-osrm.org/route/v1/driving/'];
-async function fetchRoute(from,pts){
-  const coords=[from].concat(pts).map(p=>p.lon+','+p.lat).join(';');
+const exclList=()=>[S.hwy===false?'motorway':null,S.toll===false?'toll':null].filter(Boolean);
+async function osrmGet(u,coords,ex,alt){
+  const r=await fetch(`${u}${coords}?overview=full&geometries=geojson&steps=true`+(alt?'&alternatives=3':'')+(ex?'&exclude='+ex:''));
+  if(!r.ok)throw new Error('route '+r.status);
+  const j=await r.json();
+  if(j.code!=='Ok'||!j.routes||!j.routes.length)throw new Error(j.code||'no route');
+  return j.routes;
+}
+async function fetchRoutes(from,pts,alt){
+  const coords=[from].concat(pts).map(p=>p.lon+','+p.lat).join(';'),want=exclList(),tries=[];
+  if(want.length){tries.push(want.join(','));if(want.length>1)tries.push(want[0])}
+  tries.push('');
   let err;
-  for(const u of ROUTERS){
-    try{
-      const r=await fetch(`${u}${coords}?overview=full&geometries=geojson&steps=true`);
-      if(!r.ok)throw new Error('route '+r.status);
-      const j=await r.json();
-      if(j.code!=='Ok'||!j.routes||!j.routes[0])throw new Error('no route');
-      return j.routes[0];
-    }catch(e){err=e}
+  for(const ex of tries)for(const u of ROUTERS){
+    try{return {routes:await osrmGet(u,coords,ex,alt&&pts.length===1),applied:ex,want:want.join(','),coords}}catch(e){err=e}
   }
   throw err;
+}
+async function fetchRoute(from,pts){return (await fetchRoutes(from,pts,false)).routes[0]}
+function routeInfo(r){
+  let fuel=0,hw=false,toll=false;
+  r.legs.forEach(l=>l.steps.forEach(st=>{
+    const km=st.distance/1000;if(km>0){const v=Math.min(140,Math.max(8,st.distance/Math.max(1,st.duration||st.distance/14)*3.6));fuel+=km*(3+100/v+0.0005*v*v)/100}
+    (st.intersections||[]).forEach(i=>(i.classes||[]).forEach(c=>{if(c==='motorway')hw=true;if(c==='toll')toll=true}));
+  }));
+  return {fuel,hw,toll};
+}
+async function gatherRoutes(from,pts){
+  const main=await fetchRoutes(from,pts,true);
+  let list=main.routes.slice(0,4);
+  list.forEach(r=>r.info=routeInfo(r));
+  // dodatkowy wariant bez autostrad / bez opłat, jeśli najszybsza trasa z nich korzysta
+  const best=list[0],extra=[];
+  if(!main.want){if(best.info.hw)extra.push('motorway');else if(best.info.toll)extra.push('toll')}
+  for(const ex of extra){
+    for(const u of ROUTERS){
+      try{const rs=await osrmGet(u,main.coords,ex,false);const r=rs[0];r.info=routeInfo(r);
+        if(!list.some(x=>Math.abs(x.duration-r.duration)<15&&Math.abs(x.distance-r.distance)<80))list.push(r);break}catch(e){}
+    }
+  }
+  list.sort((a,b)=>a.duration-b.duration);list=list.slice(0,4);
+  let ei=0;list.forEach((r,i)=>{if(r.info.fuel<list[ei].info.fuel-1e-6)ei=i});
+  return {list,eco:ei,applied:main.applied,want:main.want};
 }
 function buildNav(route,stops){
   const coords=route.geometry.coordinates.map(c=>[c[1],c[0]]);
@@ -1495,34 +1542,65 @@ function buildNav(route,stops){
 function drawRoute(n){
   routeCase.setLatLngs(n.coords);routeMain.setLatLngs(n.coords);
 }
-function clearRoute(){routeCase.setLatLngs([]);routeMain.setLatLngs([])}
+function clearRoute(){routeCase.setLatLngs([]);routeMain.setLatLngs([]);altLayer.clearLayers();pvTok++}
 function fmtDur(s){const m=Math.max(1,Math.round(s/60));return m<60?m+' min':Math.floor(m/60)+' godz. '+(m%60)+' min'}
 async function routeVia(points){
   if(!points.length)return;
   if(!me){toast('Czekam na pozycję GPS. Włącz lokalizację lub użyj trybu demo.');return}
-  const sh=$('#shPlace');
-  sh.innerHTML=`<h2>${esc(points[points.length-1].title)}</h2><p>Szukam trasy…</p>`;
+  const sh=$('#shPlace'),tok=++pvTok,title=esc(points[points.length-1].title);
+  sh.innerHTML=`<h2>${title}</h2><p>Szukam tras…</p>`;
   openSheet('#shPlace');
   try{
-    const route=await fetchRoute(me,points);
-    const n=buildNav(route,points);
-    drawRoute(n);navPreview=true;
-    map.fitBounds(L.polyline(n.coords).getBounds(),{padding:[60,60]});follow=false;
+    const res=await gatherRoutes(me,points);
+    if(tok!==pvTok)return;
+    const list=res.list,fast=list[0];
+    let sel=0,first=true;
     const via=points.length>1?`<p>Przez: ${points.map(p=>esc(p.title)).join(' → ')}</p>`:'';
-    sh.innerHTML=`<h2>${esc(points[points.length-1].title)}</h2><p style="font-size:17px;color:var(--fg)"><b>${fmtD(route.distance)}</b> · ${fmtDur(route.duration)}</p>${via}
-    <div class="btns"><button class="btn pri" id="rGo">Start</button><button class="btn" id="rSim">Symulacja jazdy</button><button class="btn" id="rX">Anuluj</button></div>`;
-    $('#rGo').onclick=()=>{navPreview=false;beginNav(n)};
-    $('#rSim').onclick=()=>{navPreview=false;beginNav(n);simulate(n)};
-    $('#rX').onclick=()=>{navPreview=false;clearRoute();closeSheets()};
+    const draw=()=>{
+      altLayer.clearLayers();
+      list.forEach((r,i)=>{if(i!==sel)L.polyline(r.geometry.coordinates.map(c=>[c[1],c[0]]),{color:'#8a98ad',weight:6,opacity:.8,lineCap:'round',lineJoin:'round'}).addTo(altLayer)});
+      routeLayer.clearLayers();routeLayer.addLayer(routeCase).addLayer(routeMain);
+      const n=buildNav(list[sel],points);drawRoute(n);
+      if(first){first=false;map.fitBounds(L.polyline(n.coords).getBounds(),{padding:[60,60]});follow=false}
+      return n;
+    };
+    const render=()=>{
+      const n=draw();
+      const cards=list.map((r,i)=>{
+        const dm=Math.round((r.duration-fast.duration)/60),fp=Math.round((r.info.fuel/fast.info.fuel-1)*100);
+        const bd=[];if(i===0)bd.push('<span class="bd f">Najszybsza</span>');
+        if(i===res.eco)bd.push(`<span class="bd e">Najbardziej ekonomiczna${i!==0&&fp<=-1?' · ok. '+fp+'% paliwa':''}</span>`);
+        const tg=[fmtD(r.distance),r.info.hw?'autostrada':'',r.info.toll?'płatna':''].filter(Boolean).join(' · ');
+        return `<button type="button" class="rtc${i===sel?' on':''}" data-i="${i}"><div class="r1"><b>${fmtDur(r.duration)}</b><span class="dl">${i===0?'':dm>=1?'+'+dm+' min':'≈ tak samo'}</span></div><div class="r2">${tg}</div>${bd.length?`<div class="r3">${bd.join('')}</div>`:''}</button>`;
+      }).join('');
+      const note=res.want&&res.applied!==res.want?`<p id="fNote">${res.applied?'Serwer tras uwzględnił tylko część filtrów (autostrady).':'Nie udało się zastosować filtrów (brak trasy lub serwer ich nie obsługuje), pokazuję trasy bez nich.'}</p>`:'';
+      sh.innerHTML=`<h2>${title}</h2>${via}<div class="rts">${cards}</div>${list.length===1&&points.length>1?'<p style="font-size:12px;color:var(--mute);margin:6px 0 0">Dla trasy z przystankami serwer podaje jedną propozycję.</p>':''}${note}
+      <label class="row">Autostrady <input class="sw" type="checkbox" id="fHwy"${S.hwy===false?'':' checked'}></label>
+      <label class="row">Płatne drogi <input class="sw" type="checkbox" id="fToll"${S.toll===false?'':' checked'}></label>
+      <div class="btns"><button class="btn pri" id="rGo">Start</button><button class="btn" id="rSim">Symulacja jazdy</button><button class="btn" id="rX">Anuluj</button></div>`;
+      sh.querySelectorAll('.rtc').forEach(b=>b.onclick=()=>{sel=+b.dataset.i;render()});
+      $('#fHwy').onchange=e=>{S.hwy=e.target.checked;jset('fa.s',S);routeVia(points)};
+      $('#fToll').onchange=e=>{S.toll=e.target.checked;jset('fa.s',S);routeVia(points)};
+      $('#rGo').onclick=()=>{navPreview=false;beginNav(n)};
+      $('#rSim').onclick=()=>{navPreview=false;beginNav(n);simulate(n)};
+      $('#rX').onclick=()=>{navPreview=false;clearRoute();closeSheets()};
+    };
+    navPreview=true;render();
   }catch(e){
-    sh.innerHTML=`<h2>${esc(points[points.length-1].title)}</h2><p>Nie udało się wyznaczyć trasy. Sprawdź internet i spróbuj ponownie.</p><div class="btns"><button class="btn" id="rX2">Zamknij</button></div>`;
+    if(tok!==pvTok)return;
+    sh.innerHTML=`<h2>${title}</h2><p>Nie udało się wyznaczyć trasy. Sprawdź internet i spróbuj ponownie.</p>
+    <label class="row">Autostrady <input class="sw" type="checkbox" id="fHwy"${S.hwy===false?'':' checked'}></label>
+    <label class="row">Płatne drogi <input class="sw" type="checkbox" id="fToll"${S.toll===false?'':' checked'}></label>
+    <div class="btns"><button class="btn" id="rX2">Zamknij</button></div>`;
+    $('#fHwy').onchange=e=>{S.hwy=e.target.checked;jset('fa.s',S);routeVia(points)};
+    $('#fToll').onchange=e=>{S.toll=e.target.checked;jset('fa.s',S);routeVia(points)};
     $('#rX2').onclick=()=>closeSheets();
   }
 }
 function updateBot(){const h=$('#navbar').offsetHeight;document.documentElement.style.setProperty('--bot',(54+(nav&&h?h+10:0))+'px')}
 function beginNav(n){
   if(trip)tripFinish(false);
-  nav=n;plan=[];closeSheets();tripStart(n);$('#top').classList.add('navmode');
+  nav=n;plan=[];altLayer.clearLayers();closeSheets();tripStart(n);$('#top').classList.add('navmode');
   if(selMarker){map.removeLayer(selMarker);selMarker=null}
   $('#searchRow').hidden=true;$('#results').hidden=true;$('#nav').hidden=false;$('#navbar').hidden=false;
   styleReset();showStyle();renderPlanUI();
@@ -1563,20 +1641,24 @@ function instr(s){
 function manSVG(s){
   const m=s.maneuver||{},ty=m.type,mod=m.modifier||'straight';
   const st='stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"';
-  const head=(x,y,a)=>`<polygon points="0,-10 10,6 -10,6" fill="currentColor" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${a})"/>`;
   const A={'straight':0,'slight right':45,'right':90,'sharp right':135,'slight left':-45,'left':-90,'sharp left':-135};
+  const f=v=>v.toFixed(1);
+  // strzałka: trzon od (sx,sy), grot o długości 11 na końcu odcinka w kierunku d
+  const head=(tx,ty2,d)=>{const bx=tx-d[0]*11,by=ty2-d[1]*11,px=-d[1]*9,py=d[0]*9;return `<polygon points="${f(tx)},${f(ty2)} ${f(bx+px)},${f(by+py)} ${f(bx-px)},${f(by-py)}" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>`};
   let body;
   if(s.wp!=null||ty==='arrive'){
     body='<path d="M24 45C12 31 9 25 9 18a15 15 0 0 1 30 0c0 7-3 13-15 27z" fill="currentColor"/><circle cx="24" cy="18" r="6" fill="#0b3d91"/>';
   }else if(ty==='roundabout'||ty==='rotary'||ty==='roundabout turn'){
-    const th=A[mod]!=null?A[mod]:0,sx=Math.sin(rad(th)),cy=Math.cos(rad(th));
-    const ex=24+16*sx,ey=28-16*cy;
-    body=`<circle cx="24" cy="28" r="9" ${st} stroke-width="5"/><path d="M24 46v-9" ${st}/><path d="M${(24+9*sx).toFixed(1)} ${(28-9*cy).toFixed(1)}L${ex.toFixed(1)} ${ey.toFixed(1)}" ${st}/>${head(24+20*sx,28-20*cy,th)}`;
+    const th=A[mod]!=null?A[mod]:0,d=[Math.sin(rad(th)),-Math.cos(rad(th))];
+    const sx=24+9*d[0],sy=24+9*d[1],tx=24+19*d[0],ty2=24+19*d[1];
+    body=`<circle cx="24" cy="24" r="9" ${st} stroke-width="4.5"/><path d="M24 46V33" ${st}/><path d="M${f(sx)} ${f(sy)}L${f(tx-d[0]*8)} ${f(ty2-d[1]*8)}" ${st}/>${head(tx,ty2,d)}`;
   }else if(mod==='uturn'){
-    body=`<path d="M33 45V20a9 9 0 0 0-18 0v13" ${st}/>${head(15,38,180)}`;
+    body=`<path d="M33 45V21a9 9 0 0 0-18 0v10" ${st}/>${head(15,43,[0,1])}`;
   }else{
-    const th=A[mod]!=null?A[mod]:0,ex=24+12*Math.sin(rad(th)),ey=28-12*Math.cos(rad(th));
-    body=`<path d="M24 45V28L${ex.toFixed(1)} ${ey.toFixed(1)}" ${st}/>${head(24+19*Math.sin(rad(th)),28-19*Math.cos(rad(th)),th)}`;
+    const th=A[mod]!=null?A[mod]:0,d=[Math.sin(rad(th)),-Math.cos(rad(th))],x0=Math.abs(th)>=120?24-Math.sign(th)*12:24,C=[x0,Math.abs(th)>=120?12:Math.abs(th)>=80?23:28],r=th===0?0:Math.abs(th)>=120?9:7,L=th===0?26:Math.abs(th)>=120?29:19;
+    const tx=C[0]+d[0]*L,ty2=C[1]+d[1]*L,bx=tx-d[0]*8,by=ty2-d[1]*8;
+    const path=th===0?`M24 45L24 ${f(by)}`:`M${x0} 45L${x0} ${C[1]+r}Q${C[0]} ${C[1]} ${f(C[0]+d[0]*r)} ${f(C[1]+d[1]*r)}L${f(bx)} ${f(by)}`;
+    body=`<path d="${path}" ${st}/>${head(tx,ty2,d)}`;
   }
   return `<svg viewBox="0 0 48 48" aria-hidden="true">${body}</svg>`;
 }
@@ -1708,7 +1790,7 @@ function tripStart(n){
   const st=n.stops[n.stops.length-1];
   trip={id:'t'+Date.now(),t0:Date.now(),lt:Date.now(),dest:st?st.title:'Cel',via:n.stops.slice(0,-1).map(s=>s.title),
     planned:down(n.coords,500).map(c=>[r5(c[0]),r5(c[1])]),path:[],dist:0,max:0,te:0,tm:0,td:0,sim:!!simActive,lp:null,lq:null};
-  if(me){trip.path.push([r5(me.lat),r5(me.lon)]);trip.lp=[me.lat,me.lon]}
+  if(me){trip.path.push([r5(me.lat),r5(me.lon),0]);trip.lp=[me.lat,me.lon]}
 }
 function tripPoint(){
   if(!trip||!me)return;
@@ -1717,7 +1799,7 @@ function tripPoint(){
   const k=dyn.state==='dyn'?'td':dyn.state==='mid'?'tm':'te';trip[k]+=dt;
   if(trip.lq){const d=dist(trip.lq[0],trip.lq[1],me.lat,me.lon);if(d>3&&d<400)trip.dist+=d}
   trip.lq=[me.lat,me.lon];
-  if(!trip.lp||dist(trip.lp[0],trip.lp[1],me.lat,me.lon)>=12){trip.path.push([r5(me.lat),r5(me.lon)]);trip.lp=[me.lat,me.lon]}
+  if(!trip.lp||dist(trip.lp[0],trip.lp[1],me.lat,me.lon)>=12){trip.path.push([r5(me.lat),r5(me.lon),dyn.state==='dyn'?2:dyn.state==='mid'?1:0]);trip.lp=[me.lat,me.lon]}
   if(now-tripSnapAt>30000){tripSnapAt=now;jset('fa.tripLive',trip)}
 }
 function tripSeal(t,done){
@@ -1747,6 +1829,9 @@ const dmy=t=>new Date(t).toLocaleDateString('pl-PL',{day:'numeric',month:'long',
 const durStr=s=>{s=Math.max(1,Math.round(s));const m=Math.round(s/60);if(s<90)return s+' s';return m<60?m+' min':Math.floor(m/60)+' godz. '+String(m%60).padStart(2,'0')+' min'};
 const avgSpd=t=>t.dist/Math.max(1,(t.t1-t.t0)/1000);
 const styTxt=t=>t.style==='dyn'?'Dynamicznie':'Ekonomicznie';
+function ecoPct(t){const tot=(t.te||0)+(t.tm||0)+(t.td||0);return tot>0?Math.round(100*t.te/tot):null}
+const pcCls=p=>p>=80?'pc1':p>=50?'pc2':p>=30?'pc3':'pc4';
+function ecoTag(t){const p=ecoPct(t);return p==null?`<span class="sty ${t.style}">${styTxt(t)}</span>`:`<span class="sty ${pcCls(p)}">${p}% ekonomicznie</span>`}
 function statsHtml(t,big){
   return `<div class="stats${big?' big':''}"><div><b>${durStr((t.t1-t.t0)/1000)}</b><span>Czas</span></div><div><b>${fmtD(t.dist)}</b><span>Dystans</span></div><div><b>${kmhStr(avgSpd(t))}</b><span>Średnia</span></div><div><b>${kmhStr(t.max)}</b><span>Maks.</span></div></div>`;
 }
@@ -1757,11 +1842,11 @@ function renderTrips(){
     box.innerHTML=`<button class="back" id="tBack">‹ Wszystkie trasy</button>
     <h1>${esc(t.dest)}</h1>
     <p class="sub">${t.via&&t.via.length?'Przez: '+t.via.map(esc).join(' → ')+'. ':''}${t.sim?'Symulacja jazdy. ':''}${t.done?'Dojechano do celu.':'Nawigacja przerwana przed dojazdem.'}</p>
-    <span class="sty ${t.style}">${styTxt(t)}</span>
+    ${ecoPct(t)==null?`<span class="sty ${t.style}">${styTxt(t)}</span>`:`<div class="ecoBig ${pcCls(ecoPct(t))}"><b>${ecoPct(t)}%</b>trasy przejechane ekonomicznie</div>`}
     <div class="dl"><div><span>Start</span><b>${hhmm(t.t0)}</b><br><small>${dmy(t.t0)}</small></div><div><span>Koniec</span><b>${hhmm(t.t1)}</b><br><small>${same?'':dmy(t.t1)}</small></div></div>
     ${statsHtml(t,true)}
     <div class="btns"><button class="btn pri" id="tMap">Pokaż na mapie</button><button class="btn bad" id="tDel">Usuń trasę</button></div>
-    <p class="sub">Na mapie: linia ciągła to trasa, którą pojechałeś, a przerywana to trasa z nawigacji.</p>`;
+    <p class="sub">Na mapie: linia ciągła to trasa, którą pojechałeś (zielona: jazda ekonomiczna, czerwona: zbyt dynamiczna, niebieska: umiarkowana), a szara przerywana to trasa z nawigacji.</p>`;
     $('#tBack').onclick=()=>{tripOpen=null;renderTrips()};
     $('#tMap').onclick=()=>showTrip(t);
     $('#tDel').onclick=()=>{if($('#tDel').dataset.ok){trips.splice(tripOpen,1);tripOpen=null;saveTrips();renderTrips()}else{$('#tDel').dataset.ok=1;$('#tDel').textContent='Na pewno usunąć?'}};
@@ -1771,7 +1856,7 @@ function renderTrips(){
   box.innerHTML='<h1>Trasy</h1>'+(nav?'<p class="sub">Nawigacja trwa w tle. Wróć do widoku Mapa, aby ją zobaczyć.</p>':'')+(trips.length?'':'<p class="sub">Tu pojawią się trasy przejechane z nawigacją: czas, godziny, średnia i najwyższa prędkość oraz styl jazdy. Wyznacz trasę na mapie i dotknij Start.</p>');
   trips.forEach((t,i)=>{
     const b=document.createElement('button');b.className='trip';b.type='button';
-    b.innerHTML=`<div class="t1"><b>${esc(t.dest)}</b>${t.sim?'<span class="tag">symulacja</span>':''}<span class="sty ${t.style}">${styTxt(t)}</span></div>
+    b.innerHTML=`<div class="t1"><b>${esc(t.dest)}</b>${t.sim?'<span class="tag">symulacja</span>':''}${ecoTag(t)}</div>
       <div class="t2">${dmy(t.t0)} · ${hhmm(t.t0)}–${hhmm(t.t1)}</div>${statsHtml(t)}`;
     b.onclick=()=>{tripOpen=i;renderTrips();box.scrollTop=0};
     box.appendChild(b);
@@ -1780,7 +1865,18 @@ function renderTrips(){
 function showTrip(t){
   tripLayer.clearLayers();
   if(t.planned&&t.planned.length>1)L.polyline(t.planned,{color:'#8a98ad',weight:6,opacity:.85,dashArray:'10 10'}).addTo(tripLayer);
-  const line=L.polyline(t.path,{color:'#2f7dff',weight:6,opacity:.95,lineCap:'round',lineJoin:'round'}).addTo(tripLayer);
+  const line=L.polyline(t.path,{color:'#0b1220',weight:10,opacity:.55,lineCap:'round',lineJoin:'round'}).addTo(tripLayer);
+  const hasSt=t.path.length>2&&t.path[1].length>2;
+  if(hasSt){
+    const sty=i=>{const v=t.path[i][2];return v===2?2:v===1?1:0};
+    const raw=t.path.map((_,i)=>i?sty(i):sty(1)),sm=raw.slice();
+    for(let i=1;i<raw.length-1;i++){if(raw[i-1]===raw[i+1]&&raw[i]!==raw[i-1])sm[i]=raw[i-1]}   // wygładzenie pojedynczych skoków
+    const segs=[[],[],[]];let cur=sm[1],arr=[t.path[0],t.path[1]];
+    for(let i=2;i<sm.length;i++){if(sm[i]===cur)arr.push(t.path[i]);else{segs[cur].push(arr);cur=sm[i];arr=[t.path[i-1],t.path[i]]}}
+    segs[cur].push(arr);
+    [['#4da3ff',1],['#22c55e',0],['#ef4444',2]].forEach(([c,k])=>{if(segs[k].length)L.polyline(segs[k],{color:c,weight:6,opacity:1,lineCap:'round',lineJoin:'round',multi:true}).addTo(tripLayer)});
+  }else L.polyline(t.path,{color:'#2f7dff',weight:6,opacity:.95,lineCap:'round',lineJoin:'round'}).addTo(tripLayer);
+  $('#tripLeg').hidden=!hasSt;
   const a=t.path[0],z=t.path[t.path.length-1];
   L.marker(a,{icon:L.divIcon({className:'',iconSize:[26,26],iconAnchor:[13,13],html:'<div class="stopn" style="background:#17a34a">A</div>'}),interactive:false}).addTo(tripLayer);
   L.marker(z,{icon:L.divIcon({className:'',iconSize:[26,26],iconAnchor:[13,13],html:'<div class="stopn fin">B</div>'}),interactive:false}).addTo(tripLayer);
@@ -1788,7 +1884,7 @@ function showTrip(t){
   map.fitBounds(line.getBounds(),{padding:[70,70]});
   $('#tripChip').hidden=false;
 }
-$('#tripChip').onclick=()=>{tripLayer.clearLayers();$('#tripChip').hidden=true};
+$('#tripChip').onclick=()=>{tripLayer.clearLayers();$('#tripChip').hidden=true;$('#tripLeg').hidden=true};
 
 /* ---------- zakładki ---------- */
 function setTab(t){
