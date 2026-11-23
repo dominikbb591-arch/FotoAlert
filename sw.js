@@ -1,7 +1,7 @@
-const CACHE = 'fotoalert-v5';
+const CACHE = 'fotoalert-v7';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'];
-const BYPASS = ['overpass', 'nominatim.openstreetmap.org', 'routing.openstreetmap.de', 'router.project-osrm.org'];
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js', 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'];
+const BYPASS = ['overpass', 'nominatim.openstreetmap.org', 'routing.openstreetmap.de', 'router.project-osrm.org', 'photon.komoot.io'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))));
@@ -29,7 +29,7 @@ self.addEventListener('fetch', e => {
   }
   // kafelki mapy i Leaflet: najpierw pamięć podręczna
   e.respondWith(caches.match(r).then(hit => hit || fetch(r).then(res => {
-    if (res.ok && (r.url.includes('tile.openstreetmap.org') || r.url.includes('unpkg.com'))) {
+    if (res.ok && (r.url.includes('tile.openstreetmap.org') || r.url.includes('unpkg.com') || (r.url.includes('openfreemap.org') && !r.url.includes('/styles/')))) {
       const cp = res.clone();
       caches.open(CACHE).then(async c => { await c.put(r, cp); trim(c, 600); });
     }
