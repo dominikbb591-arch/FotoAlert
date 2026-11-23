@@ -76,13 +76,13 @@ svg{display:block}
 #nav .then svg{width:24px;height:24px;color:#fff;flex:none}
 
 /* ostrzeżenie */
-#alert{border-radius:18px;padding:10px 16px;background:var(--accent);color:#1a1200;display:none;align-items:center;gap:14px;box-shadow:var(--shadow)}
+#alert{border-radius:14px;padding:7px 11px;background:var(--accent);color:#1a1200;display:none;align-items:center;gap:9px;box-shadow:var(--shadow)}
 #alert.on{display:flex}
 #alert.danger{background:var(--bad);color:#fff}
-#alert .ic2{font-size:30px;line-height:1}#alert .ic2 .mi{width:32px;height:32px}
-#alert .t{font-weight:800;font-size:14px;letter-spacing:.02em;text-transform:uppercase}
-#alert .d{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
-#alert .s{font-size:13px;opacity:.9}
+#alert .ic2{line-height:1;flex:none}#alert .ic2 .mi{width:26px;height:26px}
+#alert .t{font-weight:800;font-size:11px;letter-spacing:.02em;text-transform:uppercase;line-height:1.15}
+#alert .d{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
+#alert .s{font-size:11px;opacity:.9;line-height:1.2}
 #alert.pulse{animation:pulse .5s ease-in-out infinite alternate}
 @keyframes pulse{to{transform:scale(1.02)}}
 @media (prefers-reduced-motion:reduce){#alert.pulse{animation:none}}
@@ -199,15 +199,25 @@ select.inp{padding:0 6px}
 #tabs button.on{color:var(--fg)}
 #tabs button.on::before{content:"";position:absolute;top:0;left:30%;right:30%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
 #tabs .mi{width:24px;height:24px;color:var(--accent);opacity:.55}#tabs button.on .mi{opacity:1}
-#fuelBtn{align-self:flex-start;height:50px;padding:0 20px 0 8px;background:var(--accent);color:#1a1200;border:0;border-radius:999px;font-size:19px;font-weight:800;display:flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums;box-shadow:var(--shadow);cursor:pointer}
-#top.navmode #fuelBtn{order:20}
+#infoRow{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+#infoL{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:62%}
+#fuelBtn{margin-left:auto;height:42px;padding:0 14px 0 6px;background:var(--accent);color:#1a1200;border:0;border-radius:999px;font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;box-shadow:var(--shadow);cursor:pointer}
 .ib{display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--accent);color:#1a1200;flex:none}
 .ib.dk{background:#1a1200;color:var(--accent)}
-#fuelBtn .ib{width:36px;height:36px}#fuelBtn .mi{width:22px;height:22px}
-#evPill{display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:16px;background:var(--accent);color:#1a1200;box-shadow:var(--shadow)}
-#evPill .mi{width:26px;height:26px}
-#evPill b{font-size:15px}
-#evPill .d{margin-left:auto;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+#fuelBtn .ib{width:30px;height:30px}#fuelBtn .mi{width:18px;height:18px}
+#evPill{display:grid;grid-template-columns:auto 1fr;column-gap:9px;align-items:center;padding:6px 11px;border-radius:14px;background:var(--accent);color:#1a1200;box-shadow:var(--shadow)}
+#evPill .mi{grid-row:1/3;width:26px;height:26px}
+#evPill b{font-size:11px;line-height:1.15;text-transform:uppercase;letter-spacing:.02em}
+#evPill .d{font-size:20px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums;white-space:nowrap}
+#confirm{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:7px 9px;box-shadow:var(--shadow)}
+#confirm .q{font-size:12px;font-weight:700;margin:0 0 6px 1px;line-height:1.25}
+#confirm .bt{display:flex;gap:6px}
+#confirm button{flex:1;height:40px;border:0;border-radius:10px;font-size:15px;font-weight:800;color:#fff;cursor:pointer}
+#cNo{background:#e53935}#cYes{background:#1f9d55}
+#confirm button:active{filter:brightness(.88)}
+#sideMenu{display:flex;flex-direction:column;gap:10px}
+#bMenu{width:50px;height:50px;border-radius:50%;border:0;background:var(--accent);color:#1a1200;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow)}
+#bMenu svg{width:26px;height:26px;stroke:#1a1200;fill:none;stroke-width:2.8;stroke-linecap:round}
 #tripChip{align-self:flex-start;border:0;border-radius:999px;background:var(--blue);color:#fff;font-weight:700;font-size:14px;padding:9px 16px;box-shadow:var(--shadow);cursor:pointer}
 #trips{position:fixed;left:0;right:0;top:0;bottom:calc(54px + var(--sab));z-index:720;background:var(--bg);overflow:auto;padding:calc(var(--sat) + 14px) 14px 24px}
 #trips h1{margin:4px 2px 12px;font-size:26px;letter-spacing:-.01em}
@@ -272,7 +282,6 @@ select.inp{padding:0 6px}
     <button id="bQ" class="ic" type="submit" aria-label="Szukaj"><svg viewBox="0 0 24 24" style="stroke:#1a1200;stroke-width:2.6"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg></button>
   </form>
   <div id="results" hidden></div>
-  <button id="fuelBtn" hidden aria-label="Najbliższa stacja paliw"><span class="ib dk"><i class="mi i-fuel"></i></span><span id="fuelD">—</span></button>
   <button id="planChip" hidden></button>
   <button id="tripChip" hidden>Podgląd trasy · zamknij ✕</button>
   <div id="nav" hidden>
@@ -282,14 +291,23 @@ select.inp{padding:0 6px}
     </div>
     <div class="then" id="nThen" hidden><span id="nThenIco"></span><span id="nThenT"></span></div>
   </div>
-  <div id="evPill" hidden><i class="mi i-police" id="evI"></i><b id="evT"></b><span class="d" id="evD"></span></div>
-  <div id="alert" role="alert" aria-live="assertive">
-    <div class="ic2" id="aI"><i class="mi i-camera"></i></div>
-    <div style="flex:1;min-width:0">
-      <div class="t" id="aT">Fotoradar</div>
-      <div class="d" id="aD">—</div>
-      <div class="s" id="aS"></div>
+  <div id="infoRow">
+    <div id="infoL">
+    <div id="evPill" hidden><i class="mi i-police" id="evI"></i><b id="evT"></b><span class="d" id="evD"></span></div>
+    <div id="alert" role="alert" aria-live="assertive">
+      <div class="ic2" id="aI"><i class="mi i-camera"></i></div>
+      <div style="flex:1;min-width:0">
+        <div class="t" id="aT">Fotoradar</div>
+        <div class="d" id="aD">—</div>
+        <div class="s" id="aS"></div>
+      </div>
     </div>
+      <div id="confirm" hidden>
+        <div class="q">Czy zgłoszenie jest aktualne?</div>
+        <div class="bt"><button id="cNo" type="button">NIE</button><button id="cYes" type="button">TAK</button></div>
+      </div>
+    </div>
+    <button id="fuelBtn" hidden aria-label="Najbliższa stacja paliw"><span class="ib dk"><i class="mi i-fuel"></i></span><span id="fuelD">—</span></button>
   </div>
 </div>
 
@@ -298,9 +316,12 @@ select.inp{padding:0 6px}
 
 <div id="side" class="ic">
   <button id="b3d" class="txt" type="button">2D</button>
-  <button id="bSet" aria-label="Ustawienia"><i class="mi i-gear"></i></button>
-  <button id="bSaved" aria-label="Zapisane miejsca"><i class="mi i-star"></i></button>
-  <button id="bLocate" aria-label="Wyśrodkuj na mojej pozycji"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.8" style="fill:currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  <div id="sideMenu" hidden>
+    <button id="bSet" aria-label="Ustawienia"><i class="mi i-gear"></i></button>
+    <button id="bSaved" aria-label="Zapisane miejsca"><i class="mi i-star"></i></button>
+    <button id="bLocate" aria-label="Wyśrodkuj na mojej pozycji"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.8" style="fill:currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  </div>
+  <button id="bMenu" type="button" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
 </div>
 <button id="bReport" aria-label="Zgłoś zdarzenie"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Zgłoś</span></button>
 
@@ -635,7 +656,7 @@ let me=null,last=null,watchId=null,demoTimer=null,simTimer=null,wake=null,starte
 let nav=null,navPreview=false,follow=true,plan=[],place=null,disp=null,tgt=null,selMarker=null,dragTimer=null;
 let reports=[],prices={},demoCam=null,camAll=[],cells=jget('fa.cells',{});
 let fuelNear=null,fuelAt=0,trip=null,trips=jget('fa.trips',[]),tripOpen=null,tripSnapAt=0,tab='map';
-window.__fa={addReport:r=>reports.push(r),clearReports:()=>{reports=[]}};
+window.__fa={instr:s=>instr(s),addReport:r=>reports.push(r),clearReports:()=>{reports=[]}};
 let active=null,lastBeep=0,roads=null,roadsAt=null,roadsBusy=false,roadsFail=0,lastReroute=0,zoomAt=0;
 const alerted={};
 
@@ -1121,7 +1142,9 @@ function check(){
   };
   if(S.camOn)camAll.forEach(c=>consider({id:c.id,lat:c.lat,lon:c.lon,kind:'cam',type:c.type,max:c.max}));
   const now=Date.now();
-  reports.forEach(r=>{if(r.exp>now&&RT[r.type])consider({id:'r'+r.id,lat:r.lat,lon:r.lon,kind:'rep',type:r.type,t:r.t})});
+  reports.forEach(r=>{if(r.exp>now&&RT[r.type])consider({id:'r'+r.id,rid:r.id,lat:r.lat,lon:r.lon,kind:'rep',type:r.type,t:r.t})});
+  if(best&&best.it.kind==='rep'&&best.d<150&&!voted[best.it.id]){confirmRep={id:best.it.id,rid:best.it.rid};confirmUntil=Date.now()+10000}
+  updateConfirm();
   if(!best){hideAlert();return}
   const {it,d}=best;
   const lab=it.kind==='cam'?(CAMT[it.type]||CAMT.fixed):RT[it.type];
@@ -1142,6 +1165,18 @@ function showAlert(it,d,lab,over){
   $('#aS').textContent=it.kind==='cam'?(it.max?(over?`Zwolnij! Limit ${it.max} km/h`:`Limit ${it.max} km/h`):'Jedź przepisowo'):('Zgłoszone przez kierowców '+ago(it.t));
   active=it;
 }
+let voted={},confirmRep=null,confirmUntil=0;
+function updateConfirm(){
+  const c=$('#confirm'),show=!!(confirmRep&&Date.now()<confirmUntil&&!voted[confirmRep.id]);
+  if(c.hidden===show)c.hidden=!show;
+  clearTimeout(updateConfirm.t);if(show)updateConfirm.t=setTimeout(updateConfirm,1000);
+}
+function answerConfirm(v){
+  if(!confirmRep)return;
+  voted[confirmRep.id]=true;vote(confirmRep.rid,v);confirmRep=null;updateConfirm();
+}
+$('#cYes').onclick=()=>answerConfirm(1);
+$('#cNo').onclick=()=>answerConfirm(-1);
 function hideAlert(){if(!active)return;active=null;$('#alert').classList.remove('on','danger','pulse')}
 let ac=null;
 function unlockAudio(){
@@ -1492,14 +1527,14 @@ function instr(s){
   switch(m.type){
     case 'depart':main=s.cont?'Jedź dalej':'Ruszaj';break;
     case 'arrive':return {main:'Cel podróży',street:s.wpTitle||'',say:'Dojechałeś do celu'};
-    case 'turn':main=m.modifier==='uturn'?'Zawróć':'Skręć '+mod;break;
-    case 'end of road':main='Na końcu drogi skręć '+mod;break;
+    case 'turn':main=m.modifier==='uturn'?'Zawróć':m.modifier==='straight'?'Na skrzyżowaniu jedź prosto':'Skręć '+mod;break;
+    case 'end of road':main=m.modifier==='straight'?'Na skrzyżowaniu jedź prosto':'Na końcu drogi skręć '+mod;break;
     case 'fork':main='Na rozwidleniu trzymaj się '+(/left/.test(m.modifier||'')?'lewej':'prawej');break;
     case 'merge':main='Włącz się do ruchu';break;
     case 'on ramp':main='Wjedź na rampę';break;
     case 'off ramp':main='Zjedź z drogi';break;
     case 'roundabout':case 'rotary':main='Na rondzie zjedź '+(m.exit?m.exit+'. zjazdem':'');break;
-    case 'roundabout turn':main='Na rondzie skręć '+mod;break;
+    case 'roundabout turn':main=m.modifier==='straight'?'Na rondzie jedź prosto':'Na rondzie skręć '+mod;break;
     case 'continue':case 'new name':main=(mod&&m.modifier!=='straight')?'Jedź '+mod:'Jedź prosto';break;
     default:main=mod?'Jedź '+mod:'Jedź prosto';
   }
@@ -1769,6 +1804,12 @@ $('#bSet').onclick=()=>{
   $('#oVec').checked=S.vector!==false;$('#mapInfo').textContent='Stan mapy: '+(window.__mapStatus||'?');$('#oCam').checked=S.camOn;$('#oFuel').checked=S.fuelOn;$('#oZab').checked=S.zabkaOn;$('#oFt').value=S.fuel;$('#oSrv').value=S.server||'';
   openSheet('#shSet');
 };
+function setMenu(on){
+  $('#sideMenu').hidden=!on;$('#bMenu').setAttribute('aria-expanded',on?'true':'false');
+  $('#bMenu').innerHTML=on?'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>':'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+}
+$('#bMenu').onclick=()=>setMenu($('#sideMenu').hidden);
+$('#sideMenu').addEventListener('click',()=>setTimeout(()=>setMenu(false),0));
 $('#b3d').onclick=()=>{S.view3d=!S.view3d;jset('fa.s',S);if(me)follow=true;applyMode();toast(S.view3d?'Widok 3D: kamera za strzałką':'Widok 2D: mapa z góry')};
 $('#bLocate').onclick=()=>{follow=true;if(!S.view3d)map.resetNorth();if(me)map.setView([me.lat,me.lon],nav?17:16);else toast('Czekam na pozycję GPS…')};
 [['#oSound','sound'],['#oVoice','voice'],['#oVib','vib'],['#oMi','mi'],['#oCam','camOn'],['#oFuel','fuelOn'],['#oZab','zabkaOn']].forEach(([s,k])=>{
