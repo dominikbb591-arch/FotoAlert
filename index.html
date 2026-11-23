@@ -153,7 +153,7 @@ svg{display:block}
   padding:8px 18px calc(var(--sab) + 18px);transform:translateY(105%);transition:transform .25s;box-shadow:0 -10px 40px #0009;max-height:84%;overflow:auto}
 .sheet::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 12px}
 .sheet.on{transform:none}
-.sheet.peek{max-height:46%}.sheet.peek.min{transform:translateY(calc(100% - 78px))}
+.sheet.peek{max-height:46%}.sheet.on.peek.min{transform:translateY(calc(100% - 78px))}
 .ph{display:flex;align-items:center;justify-content:space-between;gap:10px}.ph h2{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ph .btn{padding:8px 14px;font-size:14px;flex:none}
 .sheet:not(.on){box-shadow:none}
 @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
@@ -1488,7 +1488,7 @@ map.on('contextmenu',async e=>{
 function endPreview(){if(navPreview){navPreview=false;clearRoute()}}
 function openSheet(id){closeSheets(true);if(id!=='#shPlace'||!window.__pvOpen)endPreview();$(id).classList.remove('peek','min');$(id).classList.add('on');$('#scrim').classList.add('on')}
 function closeSheets(keepSel){
-  document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('on'));$('#scrim').classList.remove('on');
+  document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('on','min'));$('#scrim').classList.remove('on');
   if(keepSel!==true)endPreview();
   if(keepSel!==true&&selMarker&&!navPreview){map.removeLayer(selMarker);selMarker=null}
 }
@@ -1866,11 +1866,12 @@ async function routeVia(points){
         return `<button type="button" class="rtc${i===sel?' on':''}" data-i="${i}"><div class="r1"><b>${fmtDur(r.duration)}</b><span class="dl">${i===0?'':dm>=1?'+'+dm+' min':'≈ tak samo'}</span></div><div class="r2">${tg}</div><div class="r2">${fu}</div><div class="r2">${fu2}</div>${bd.length?`<div class="r3">${bd.join('')}</div>`:''}</button>`;
       }).join('');
       const note=res.want&&res.applied!==res.want?`<p id="fNote">Nie znalazłem trasy bez wybranych dróg (autostrady lub płatne odcinki). Pokazuję najlepsze dostępne trasy, sprawdź oznaczenia „autostrada” i „płatna”.</p>`:'';
-      sh.innerHTML=`<div class="ph"><h2>${title}</h2><button type="button" class="btn" id="pvMin">${sh.classList.contains('min')?'Trasy ▴':'Mapa ▾'}</button></div>${via}<div class="rts">${cards}</div>${list.length===1&&points.length>1?'<p style="font-size:12px;color:var(--mute);margin:6px 0 0">Dla trasy z przystankami serwer podaje jedną propozycję.</p>':''}${note}
+      sh.innerHTML=`<div class="ph"><h2>${title}</h2><span style="display:flex;gap:6px"><button type="button" class="btn" id="pvMin">${sh.classList.contains('min')?'Trasy ▴':'Mapa ▾'}</button><button type="button" class="btn" id="pvX" aria-label="Zamknij trasy">✕</button></span></div>${via}<div class="rts">${cards}</div>${list.length===1&&points.length>1?'<p style="font-size:12px;color:var(--mute);margin:6px 0 0">Dla trasy z przystankami serwer podaje jedną propozycję.</p>':''}${note}
       <label class="row">Autostrady <input class="sw" type="checkbox" id="fHwy"${S.hwy===false?'':' checked'}></label>
       <label class="row">Płatne drogi <input class="sw" type="checkbox" id="fToll"${S.toll===false?'':' checked'}></label>
       <div class="btns"><button class="btn pri" id="rGo">Start</button><button class="btn" id="rSim">Symulacja jazdy</button><button class="btn" id="rX">Anuluj</button></div>`;
       sh.querySelectorAll('.rtc').forEach(b=>b.onclick=()=>{sel=+b.dataset.i;render()});
+      $('#pvX').onclick=()=>{navPreview=false;clearRoute();closeSheets()};
       $('#pvMin').onclick=()=>{sh.classList.toggle('min');$('#pvMin').textContent=sh.classList.contains('min')?'Trasy ▴':'Mapa ▾'};
       $('#fHwy').onchange=e=>{S.hwy=e.target.checked;jset('fa.s',S);routeVia(points)};
       $('#fToll').onchange=e=>{S.toll=e.target.checked;jset('fa.s',S);routeVia(points)};
