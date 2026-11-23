@@ -1369,22 +1369,30 @@ const refPos=()=>{if(me)return {lat:me.lat,lon:me.lon};const c=map.getCenter();r
 /* lokalne źródła: zapisane miejsca, ostatnie wybory oraz stacje i Żabki znane z mapy */
 function localMatches(q){
   const f=fold2(q),out=[];
-  const add=(title,sub,lat,lon,kind,w)=>{if(fold2(title+' '+sub).includes(f))out.push({title,sub,lat,lon,kind,w})};
+  const addr=/\d/.test(f),add=(title,sub,lat,lon,kind,w)=>{if(fold2(addr?title+' '+sub:title).includes(f))out.push({title,sub,lat,lon,kind,w})};
   saved.forEach(x=>add(x.name,'Zapisane miejsce',x.lat,x.lon,'',0.45));
   jget('fa.recent',[]).forEach(x=>add(x.title,x.sub,x.lat,x.lon,x.kind,0.7));
   Object.keys(cells).forEach(k=>{const c=cells[k];(c.fuel||[]).forEach(x=>add(x.name,x.addr||'',x.lat,x.lon,'Stacja paliw',0.9));(c.zabka||[]).forEach(x=>add(x.name,x.addr||'',x.lat,x.lon,'Sklep',0.9))});
   return out;
 }
-/* ranking: dopasowanie tekstu × odległość od użytkownika (najbliższe i najbardziej prawdopodobne pierwsze) */
+/* ranking: najpierw jakość dopasowania słowa kluczowego do nazwy, dopiero potem odległość od użytkownika */
+function matchClass(x,f){
+  const t=fold2(x.title),words=t.split(/[\s\-,.\/]+/).filter(Boolean),fw=f.split(/\s+/).filter(Boolean);
+  if(t===f)return 0;
+  if(t.startsWith(f))return 1;
+  if(fw.length&&fw.every(w=>words.some(x=>x.startsWith(w))))return 1;
+  if(t.includes(f))return 3;
+  if(fold2(x.sub||'').includes(f))return 5;     // dopasowanie tylko w adresie (np. Żabka przy ul. Krakowskiej)
+  return 4;
+}
 function rankResults(list,q){
-  const f=fold2(q),r=refPos(),seen={},out=[];
+  const f=fold2(q.trim()),r=refPos(),seen={},out=[];
   list.forEach(x=>{
     if(!x||!isFinite(x.lat)||!isFinite(x.lon))return;
     const key=fold2(x.title)+'|'+x.lat.toFixed(3)+'|'+x.lon.toFixed(3);if(seen[key])return;seen[key]=1;
-    x.d=dist(r.lat,r.lon,x.lat,x.lon);
-    const t=fold2(x.title);
-    const tier=t.startsWith(f)?1:t.split(/[\s\-,.]+/).some(w=>w.startsWith(f))?1.5:t.includes(f)?2.5:4;
-    x.score=(x.d/1000+0.4)*tier*(x.w||1);
+    x.d=dist(r.lat,r.lon,x.lat,x.lon);x.cls=matchClass(x,f);
+    const near=Math.min(x.d,2e6)/1000;
+    x.score=x.cls*1e5+near*(x.w||1);
     out.push(x);
   });
   return out.sort((a,b)=>a.score-b.score);
@@ -1599,15 +1607,90 @@ async function osrmGet(u,coords,ex,alt,bear){
   if(j.code!=='Ok'||!j.routes||!j.routes.length)throw new Error(j.code||'no route');
   return j.routes;
 }
-async function fetchRoutes(from,pts,alt,bear){
-  const coords=[from].concat(pts).map(p=>p.lon+','+p.lat).join(';'),want=exclList(),tries=[];
-  if(want.length){tries.push(want.join(','));if(want.length>1)tries.push(want[0])}
-  tries.push('');
-  let err;
-  for(const ex of tries)for(const u of ROUTERS){
-    try{return {routes:await osrmGet(u,coords,ex,alt&&pts.length===1,bear),applied:ex,want:want.join(','),coords}}catch(e){err=e}
+/* Valhalla (FOSSGIS): potrafi naprawdę wykluczać autostrady i drogi płatne oraz daje alternatywy.
+   Publiczny serwer OSRM tego nie robi, więc Valhalla jest głównym źródłem tras przy włączonych filtrach. */
+const VALH='https://valhalla1.openstreetmap.de/route';
+function decodeP6(str){
+  let i=0,lat=0,lon=0;const out=[];
+  while(i<str.length){
+    let b,sh=0,r=0;do{b=str.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5}while(b>=32);lat+=(r&1)?~(r>>1):(r>>1);
+    sh=0;r=0;do{b=str.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5}while(b>=32);lon+=(r&1)?~(r>>1):(r>>1);
+    out.push([lon/1e6,lat/1e6]);
   }
-  throw err;
+  return out;
+}
+function vhType(m){
+  const t=m.type;
+  if(t===1||t===2||t===3)return ['depart','straight'];
+  if(t===4)return ['arrive','straight'];if(t===5)return ['arrive','right'];if(t===6)return ['arrive','left'];
+  if(t===7||t===8)return ['continue','straight'];
+  if(t===9)return ['turn','slight right'];if(t===10)return ['turn','right'];if(t===11)return ['turn','sharp right'];
+  if(t===12||t===13)return ['turn','uturn'];
+  if(t===14)return ['turn','sharp left'];if(t===15)return ['turn','left'];if(t===16)return ['turn','slight left'];
+  if(t===17)return ['on ramp','straight'];if(t===18)return ['on ramp','right'];if(t===19)return ['on ramp','left'];
+  if(t===20)return ['off ramp','right'];if(t===21)return ['off ramp','left'];
+  if(t===22)return ['continue','straight'];if(t===23)return ['fork','right'];if(t===24)return ['fork','left'];
+  if(t===25||t===36||t===37)return ['merge','straight'];
+  if(t===26)return ['roundabout','straight'];if(t===27)return ['exit roundabout','straight'];
+  return ['continue','straight'];
+}
+function vhRoute(trip){
+  const coords=[],legs=[];
+  trip.legs.forEach((l,li)=>{
+    const sh=decodeP6(l.shape);
+    sh.forEach((p,i)=>{if(!(li>0&&i===0))coords.push(p)});
+    const steps=l.maneuvers.map(m=>{
+      const [ty,md]=vhType(m),loc=sh[Math.min(m.begin_shape_index||0,sh.length-1)]||sh[0],cls=[];
+      if(m.highway)cls.push('motorway');if(m.toll)cls.push('toll');
+      const st={distance:(m.length||0)*1000,duration:m.time||0,name:(m.street_names&&m.street_names[0])||'',maneuver:{type:ty,modifier:md,location:loc},intersections:[{classes:cls}]};
+      if(ty==='roundabout'&&m.roundabout_exit_count)st.maneuver.exit=m.roundabout_exit_count;
+      return st;
+    });
+    legs.push({steps,distance:(l.summary&&l.summary.length||0)*1000,duration:l.summary&&l.summary.time||0});
+  });
+  const sm=trip.summary||{};
+  return {distance:(sm.length||0)*1000,duration:sm.time||0,geometry:{coordinates:coords},legs,vh:{hw:!!sm.has_highway,toll:!!sm.has_toll}};
+}
+async function vhGet(from,pts,o){
+  const locs=[from].concat(pts).map((p,i)=>{const L={lat:p.lat,lon:p.lon};if(i===0&&o.bear!=null){L.heading=o.bear;L.heading_tolerance=60}return L});
+  const au={};
+  if(o.noHw){au.exclude_highways=true;au.use_highways=0}
+  if(o.noToll){au.exclude_tolls=true;au.use_tolls=0}
+  const body={locations:locs,costing:'auto',directions_options:{units:'kilometers',language:'pl-PL'}};
+  if(Object.keys(au).length)body.costing_options={auto:au};
+  if(o.alt&&pts.length===1)body.alternates=2;
+  const ac=new AbortController(),to=setTimeout(()=>ac.abort(),14000);
+  try{
+    const r=await fetch(VALH+'?json='+encodeURIComponent(JSON.stringify(body)),{signal:ac.signal});
+    if(!r.ok)throw new Error('valhalla '+r.status);
+    const j=await r.json();
+    if(!j.trip||j.trip.status!==0||!j.trip.legs)throw new Error('valhalla no route');
+    return [vhRoute(j.trip)].concat((j.alternates||[]).filter(a=>a.trip&&a.trip.legs).map(a=>vhRoute(a.trip)));
+  }finally{clearTimeout(to)}
+}
+const passes=r=>{const i=r.info||(r.info=routeInfo(r));return !(S.hwy===false&&i.hw)&&!(S.toll===false&&i.toll)};
+async function fetchRoutes(from,pts,alt,bear){
+  const coords=[from].concat(pts).map(p=>p.lon+','+p.lat).join(';'),want=exclList(),w=want.join(',');
+  const hd=bear?parseInt(bear,10):null;
+  let err;
+  if(want.length){
+    try{
+      const rs=(await vhGet(from,pts,{alt,noHw:S.hwy===false,noToll:S.toll===false,bear:hd})).filter(passes);
+      if(rs.length)return {routes:rs,applied:w,want:w,coords};
+    }catch(e){err=e}
+  }
+  let last=null;
+  for(const u of ROUTERS){
+    try{
+      const rs=await osrmGet(u,coords,'',alt&&pts.length===1,bear);
+      if(!want.length)return {routes:rs,applied:'',want:'',coords};
+      const ok=rs.filter(passes);if(ok.length)return {routes:ok,applied:w,want:w,coords};
+      last=last||rs;
+    }catch(e){err=e}
+  }
+  if(last)return {routes:last,applied:'',want:w,coords};
+  try{const rs=await vhGet(from,pts,{alt,noHw:S.hwy===false,noToll:S.toll===false,bear:hd});if(rs.length)return {routes:rs,applied:w,want:w,coords}}catch(e){err=err||e}
+  throw err||new Error('no route');
 }
 async function fetchRoute(from,pts){return (await fetchRoutes(from,pts,false)).routes[0]}
 /* Po zboczeniu z trasy: najpierw szukamy drogi do celu w kierunku, w którym jedzie kierowca (bez zawracania).
@@ -1626,7 +1709,7 @@ async function smartReroute(from,rest){
    + hamowanie/ruszanie na skrętach i rondach + postój (opóźnienia z serwera tras). To model, nie pomiar. */
 function routeInfo(r){
   const KE=8.2e-5,cr=v=>{const k=Math.min(140,Math.max(8,v*3.6));return (3+100/k+0.0005*k*k)/100};
-  let hw=false,toll=false,fuel=0,acc=0,stops=0,seenT=0,distM=0;
+  let hw=!!(r.vh&&r.vh.hw),toll=!!(r.vh&&r.vh.toll),fuel=0,acc=0,stops=0,seenT=0,distM=0,hwM=0,turns=0;
   r.legs.forEach(l=>{
     const an=l.annotation;let chunks=[];
     if(an&&an.distance&&an.duration&&an.distance.length&&an.distance.length===an.duration.length){
@@ -1642,7 +1725,9 @@ function routeInfo(r){
     });
     l.steps.forEach(st=>{
       const ty=st.maneuver&&st.maneuver.type,md=st.maneuver&&st.maneuver.modifier;
-      (st.intersections||[]).forEach(i=>(i.classes||[]).forEach(c=>{if(c==='motorway')hw=true;if(c==='toll')toll=true}));
+      let isHw=false;(st.intersections||[]).forEach(i=>(i.classes||[]).forEach(c=>{if(c==='motorway'){hw=true;isHw=true}if(c==='toll')toll=true}));
+      if(isHw)hwM+=st.distance;
+      if((ty==='turn'||ty==='end of road'||ty==='roundabout'||ty==='rotary'||ty==='fork')&&md!=='straight')turns++;
       const turn=(ty==='turn'||ty==='end of road'||ty==='roundabout'||ty==='rotary'||ty==='fork'||ty==='on ramp'||ty==='off ramp')&&md!=='straight';
       if(turn&&st.distance>0){
         const vs=Math.min(33,st.distance/Math.max(1,st.duration||st.distance/14));
@@ -1652,25 +1737,48 @@ function routeInfo(r){
   });
   if(r.duration>seenT&&seenT>0)fuel+=Math.min(r.duration-seenT,r.duration*0.3)*0.0003;   // postoje (sygnalizacja itp.)
   const km=Math.max(.1,(distM||r.distance)/1000);
-  return {fuel,per100:fuel/km*100,acc:acc+stops,hw,toll};
+  return {fuel,per100:fuel/km*100,acc:acc+stops,hw,toll,turns,hwShare:hwM/Math.max(1,r.distance),avg:r.distance/Math.max(1,r.duration)*3.6};
+}
+function routeSimilar(a,b){
+  const A=a.geometry.coordinates,B=b.geometry.coordinates;
+  if(Math.abs(a.distance-b.distance)>0.12*Math.max(a.distance,b.distance))return false;
+  let near=0,n=0;
+  const st=Math.max(1,Math.floor(A.length/20));
+  for(let i=0;i<A.length;i+=st){
+    n++;let m=1e9;
+    for(let j=0;j<B.length;j+=Math.max(1,Math.floor(B.length/300))){const d=dist(A[i][1],A[i][0],B[j][1],B[j][0]);if(d<m)m=d;if(m<120)break}
+    if(m<250)near++;
+  }
+  return near/n>=0.9;
 }
 async function gatherRoutes(from,pts){
   const main=await fetchRoutes(from,pts,true);
-  let list=main.routes.slice(0,4);
+  let list=main.routes.slice();
   list.forEach(r=>r.info=routeInfo(r));
-  // dodatkowy wariant bez autostrad / bez opłat, jeśli najszybsza trasa z nich korzysta
-  const best=list[0],extra=[];
-  if(!main.want){if(best.info.hw)extra.push('motorway');else if(best.info.toll)extra.push('toll')}
-  for(const ex of extra){
-    for(const u of ROUTERS){
-      try{const rs=await osrmGet(u,main.coords,ex,false);const r=rs[0];r.info=routeInfo(r);
-        if(!list.some(x=>Math.abs(x.duration-r.duration)<15&&Math.abs(x.distance-r.distance)<80))list.push(r);break}catch(e){}
-    }
+  const want=main.want,jobs=[];
+  if(!want){
+    // bez filtrów: dokładamy alternatywy z Valhalli oraz warianty bez autostrad / bez opłat (dla porównania)
+    jobs.push(vhGet(from,pts,{alt:true}));
+    const best=list[0];
+    if(best.info.hw)jobs.push(vhGet(from,pts,{noHw:true}));
+    if(best.info.toll)jobs.push(vhGet(from,pts,{noToll:true}));
+  }else{
+    // z filtrami: dodatkowe warianty trasy przy tych samych ograniczeniach
+    jobs.push(vhGet(from,pts,{alt:true,noHw:S.hwy===false,noToll:S.toll===false}));
+    for(const u of ROUTERS.slice(0,1))jobs.push(osrmGet(u,main.coords,'',pts.length===1,null));
   }
-  list.sort((a,b)=>a.duration-b.duration);list=list.slice(0,4);
-  let ei=0;list.forEach((r,i)=>{if(r.info.fuel<list[ei].info.fuel-1e-6)ei=i});
+  const res=await Promise.allSettled(jobs);
+  res.forEach(x=>{if(x.status==='fulfilled')x.value.forEach(r=>{r.info=r.info||routeInfo(r);list.push(r)})});
+  // zgodność z filtrami: jeśli są trasy spełniające, pokazujemy tylko je
+  const okList=list.filter(passes);if(okList.length)list=okList;
+  list.sort((a,b)=>a.duration-b.duration);
+  const uniq=[];list.forEach(r=>{if(!uniq.some(u=>routeSimilar(u,r)))uniq.push(r)});
+  list=uniq.slice(0,5);
+  const applied=list.every(passes)?want:'';
+  let ei=0,si=0,ci=0;
+  list.forEach((r,i)=>{if(r.info.fuel<list[ei].info.fuel-1e-6)ei=i;if(r.distance<list[si].distance-1)si=i;if(r.info.acc<list[ci].info.acc)ci=i});
   if(list[ei].info.fuel>list[0].info.fuel*0.99)ei=0;   // różnica poniżej 1%: uznajemy za taką samą, wygrywa szybsza
-  return {list,eco:ei,applied:main.applied,want:main.want};
+  return {list,eco:ei,short:si,calm:ci,applied,want};
 }
 function buildNav(route,stops){
   const coords=route.geometry.coordinates.map(c=>[c[1],c[0]]);
@@ -1727,14 +1835,15 @@ async function routeVia(points){
       const cards=list.map((r,i)=>{
         const dm=Math.round((r.duration-fast.duration)/60),fp=Math.round((r.info.fuel/fast.info.fuel-1)*100);
         const bd=[];
-        if(i===0&&i===res.eco)bd.push('<span class="bd f">Najszybsza</span><span class="bd e">Najbardziej ekonomiczna</span>');
-        else{if(i===0)bd.push('<span class="bd f">Najszybsza</span>');
-          if(i===res.eco)bd.push(`<span class="bd e">Najbardziej ekonomiczna${fp<=-1?' · '+fp+'% paliwa':''}</span>`)}
-        const tg=[fmtD(r.distance),r.info.hw?'autostrada':'',r.info.toll?'płatna':''].filter(Boolean).join(' · ');
-        const fu=`≈ ${r.info.per100.toFixed(1).replace('.',',')} l/100 km · ok. ${r.info.fuel.toFixed(1).replace('.',',')} l · przyspieszeń: ${r.info.acc}`;
-        return `<button type="button" class="rtc${i===sel?' on':''}" data-i="${i}"><div class="r1"><b>${fmtDur(r.duration)}</b><span class="dl">${i===0?'':dm>=1?'+'+dm+' min':'≈ tak samo'}</span></div><div class="r2">${tg}</div><div class="r2">${fu}</div>${bd.length?`<div class="r3">${bd.join('')}</div>`:''}</button>`;
+        if(i===0)bd.push('<span class="bd f">Najszybsza</span>');
+        if(i===res.eco)bd.push(`<span class="bd e">Najbardziej ekonomiczna${i!==0&&fp<=-1?' · '+fp+'% paliwa':''}</span>`);
+        if(i===res.short&&list.length>1)bd.push('<span class="bd f">Najkrótsza</span>');
+        if(i===res.calm&&i!==res.eco&&list.length>2&&r.info.acc<fast.info.acc)bd.push('<span class="bd e">Najspokojniejsza</span>');
+        const tg=[fmtD(r.distance),r.info.hw?'autostrada'+(r.info.hwShare>0.02?' '+Math.round(r.info.hwShare*100)+'%':''):'',r.info.toll?'płatna':''].filter(Boolean).join(' · ');
+        const fu=`≈ ${r.info.per100.toFixed(1).replace('.',',')} l/100 km · ok. ${r.info.fuel.toFixed(1).replace('.',',')} l`,fu2=`śr. ${Math.round(r.info.avg)} km/h · manewrów: ${r.info.turns} · przyspieszeń: ${r.info.acc}`;
+        return `<button type="button" class="rtc${i===sel?' on':''}" data-i="${i}"><div class="r1"><b>${fmtDur(r.duration)}</b><span class="dl">${i===0?'':dm>=1?'+'+dm+' min':'≈ tak samo'}</span></div><div class="r2">${tg}</div><div class="r2">${fu}</div><div class="r2">${fu2}</div>${bd.length?`<div class="r3">${bd.join('')}</div>`:''}</button>`;
       }).join('');
-      const note=res.want&&res.applied!==res.want?`<p id="fNote">${res.applied?'Serwer tras uwzględnił tylko część filtrów (autostrady).':'Nie udało się zastosować filtrów (brak trasy lub serwer ich nie obsługuje), pokazuję trasy bez nich.'}</p>`:'';
+      const note=res.want&&res.applied!==res.want?`<p id="fNote">Nie znalazłem trasy bez wybranych dróg (autostrady lub płatne odcinki). Pokazuję najlepsze dostępne trasy, sprawdź oznaczenia „autostrada” i „płatna”.</p>`:'';
       sh.innerHTML=`<div class="ph"><h2>${title}</h2><button type="button" class="btn" id="pvMin">${sh.classList.contains('min')?'Trasy ▴':'Mapa ▾'}</button></div>${via}<div class="rts">${cards}</div>${list.length===1&&points.length>1?'<p style="font-size:12px;color:var(--mute);margin:6px 0 0">Dla trasy z przystankami serwer podaje jedną propozycję.</p>':''}${note}
       <label class="row">Autostrady <input class="sw" type="checkbox" id="fHwy"${S.hwy===false?'':' checked'}></label>
       <label class="row">Płatne drogi <input class="sw" type="checkbox" id="fToll"${S.toll===false?'':' checked'}></label>

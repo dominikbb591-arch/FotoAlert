@@ -1,7 +1,7 @@
-const CACHE = 'fotoalert-v15';
+const CACHE = 'fotoalert-v16';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js', 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'];
-const BYPASS = ['overpass', 'nominatim.openstreetmap.org', 'routing.openstreetmap.de', 'router.project-osrm.org', 'photon.komoot.io'];
+const BYPASS = ['overpass', 'nominatim.openstreetmap.org', 'routing.openstreetmap.de', 'router.project-osrm.org', 'photon.komoot.io', 'valhalla1.openstreetmap.de'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))));
