@@ -795,8 +795,18 @@ function ensureView(force){
   if(map.getZoom()<12)return;
   cellsFor(map.getBounds()).forEach(([i,j])=>loadCell(i,j,force));
 }
+let quickAt=null,quickBusy=false;
+function quickLoad(){
+  if(!me||quickBusy)return;
+  if(quickAt&&dist(me.lat,me.lon,quickAt[0],quickAt[1])<2500)return;
+  quickBusy=true;const at=[me.lat,me.lon],a=`(around:7000,${r4(at[0])},${r4(at[1])})`;
+  const q=`[out:json][timeout:25];(nwr["amenity"="fuel"]${a};nwr["shop"]["brand:wikidata"="Q2589061"]${a};nwr["shop"]["name"~"[ŻżZz][Aa][Bb][Kk][Aa]"]${a};);out center tags;`;
+  ovp(q,true).then(j=>{const c=parseCell(j);quickAt=at;cells['q:0']={t:Date.now(),loading:false,fail:0,cams:[],fuel:c.fuel,zabka:c.zabka};saveCells();rebuild()})
+    .catch(()=>{}).finally(()=>{quickBusy=false});
+}
 function ensureNearMe(){
   if(!me)return;
+  quickLoad();
   cellsFor(L.latLngBounds([me.lat-0.05,me.lon-0.08],[me.lat+0.05,me.lon+0.08])).forEach(([i,j])=>loadCell(i,j));
 }
 
@@ -1078,6 +1088,7 @@ function onPos(p){
   if(!disp)disp={lat:tl,lon:tn,hd:th||0};
   autoZoom();
   showSpeed();
+  if(!firstFix){firstFix=true;setTimeout(()=>{renderPOI();updateFuelNow()},700)}
   if(!p.demo){ensureNearMe();ensureRoads(p.lat,p.lon)}
   updateLimit();
   if(nav){styleTick();showStyle();tripPoint();navTick(nb)}
@@ -1085,7 +1096,7 @@ function onPos(p){
   check();
   updateFuel();
 }
-let lastFrame=0,arrowEl=null;
+let lastFrame=0,arrowEl=null,firstFix=false;
 function frame(ts){
   requestAnimationFrame(frame);
   if(!tgt||!disp||document.hidden)return;
@@ -1462,6 +1473,14 @@ function buildNav(route,stops){
   const steps=[],wpIdx=[];
   route.legs.forEach((l,li)=>l.steps.forEach(s=>{
     const st=Object.assign({},s),ty=s.maneuver&&s.maneuver.type;
+    const pv=steps[steps.length-1],pt=pv&&pv.maneuver&&pv.maneuver.type;
+    // na rondzie nie dodajemy osobnych poleceń wyjazdu/skrętu: wystarczy „N-ty zjazd”
+    if(pv&&pv.wp==null&&(pt==='roundabout'||pt==='rotary')&&(ty==='exit roundabout'||ty==='exit rotary'||ty==='roundabout turn'||ty==='roundabout'||ty==='rotary')&&s.distance<400&&ty!=='roundabout'&&ty!=='rotary'){
+      pv.distance+=s.distance;pv.duration=(pv.duration||0)+(s.duration||0);return;
+    }
+    if(ty==='exit roundabout'||ty==='exit rotary'){
+      if(pv&&pv.wp==null){pv.distance+=s.distance;pv.duration=(pv.duration||0)+(s.duration||0);return}
+    }
     if(ty==='arrive'){
       if(li<route.legs.length-1){st.wp=li;st.wpTitle=stops[li]?stops[li].title:'';wpIdx.push(steps.length)}
       else st.wpTitle=stops[stops.length-1]?stops[stops.length-1].title:'';
@@ -1519,6 +1538,7 @@ function endNav(msg){
   if(msg)toast(msg);
 }
 $('#nX').onclick=()=>endNav('Zakończono nawigację, trasa usunięta');
+const ORD=['','pierwszy','drugi','trzeci','czwarty','piąty','szósty','siódmy','ósmy','dziewiąty','dziesiąty'];
 const MOD={'left':'w lewo','right':'w prawo','slight left':'lekko w lewo','slight right':'lekko w prawo','sharp left':'ostro w lewo','sharp right':'ostro w prawo','straight':'prosto','uturn':'zawróć'};
 function instr(s){
   const m=s.maneuver||{},mod=MOD[m.modifier]||'',st=s.name||'';
@@ -1533,7 +1553,7 @@ function instr(s){
     case 'merge':main='Włącz się do ruchu';break;
     case 'on ramp':main='Wjedź na rampę';break;
     case 'off ramp':main='Zjedź z drogi';break;
-    case 'roundabout':case 'rotary':main='Na rondzie zjedź '+(m.exit?m.exit+'. zjazdem':'');break;
+    case 'roundabout':case 'rotary':main=m.exit?'Na rondzie '+ORD[Math.min(m.exit,10)]+' zjazd':'Wjedź na rondo';break;
     case 'roundabout turn':main=m.modifier==='straight'?'Na rondzie jedź prosto':'Na rondzie skręć '+mod;break;
     case 'continue':case 'new name':main=(mod&&m.modifier!=='straight')?'Jedź '+mod:'Jedź prosto';break;
     default:main=mod?'Jedź '+mod:'Jedź prosto';
@@ -1828,7 +1848,8 @@ $('#bDemo2').onclick=()=>{unlockAudio();begin();startDemo()};
 
 applyTheme();setInterval(applyTheme,120000);
 rebuild();renderSavedMarkers();setOnline(null);
-if(Object.keys(cells).length){const k=Object.keys(cells).sort((a,b)=>cells[b].t-cells[a].t)[0].split(':');map.setView([(parseInt(k[0],10)+0.5)*CELL,(parseInt(k[1],10)+0.5)*CELL],14)}
+const ck=Object.keys(cells).filter(k=>k!=='q:0');
+if(ck.length){const k=ck.sort((a,b)=>cells[b].t-cells[a].t)[0].split(':');map.setView([(parseInt(k[0],10)+0.5)*CELL,(parseInt(k[1],10)+0.5)*CELL],14)}
 requestAnimationFrame(frame);
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
 })();
