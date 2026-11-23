@@ -248,6 +248,8 @@ select.inp{padding:0 6px}
 #bMenu svg{width:26px;height:26px;stroke:#1a1200;fill:none;stroke-width:2.8;stroke-linecap:round}
 #tripChip{align-self:flex-start;border:0;border-radius:999px;background:var(--blue);color:#fff;font-weight:700;font-size:14px;padding:9px 16px;box-shadow:var(--shadow);cursor:pointer}
 #trips{position:fixed;left:0;right:0;top:0;bottom:calc(54px + var(--sab));z-index:720;background:var(--bg);overflow:auto;padding:calc(var(--sat) + 14px) 14px 24px}
+#diary{position:fixed;left:0;right:0;top:0;bottom:calc(54px + var(--sab));z-index:720;background:#0c141b;padding-top:var(--sat)}#diary iframe{width:100%;height:100%;border:0;display:block;background:#0c141b}
+.i-book{--m:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a1 1 0 0 1 1-1zm1 2v12.2A3 3 0 0 1 7 17h10V5H6zm2 2h7v2H8V7zm0 3h7v2H8v-2z'/></svg>")}
 #trips h1{margin:4px 2px 12px;font-size:26px;letter-spacing:-.01em}
 #trips .sub{color:var(--mute);font-size:13px;line-height:1.5;margin:0 2px 12px}
 .trip{display:block;width:100%;text-align:left;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer}
@@ -427,9 +429,11 @@ select.inp{padding:0 6px}
 </div>
 
 <div id="trips" hidden></div>
+<div id="diary" hidden><iframe id="diaryFrame" title="Dziennik samochodowy" data-src="autokoszty.html"></iframe></div>
 <nav id="tabs" aria-label="Widok">
   <button id="tabMap" class="on" type="button"><i class="mi i-pin"></i>Mapa</button>
   <button id="tabTrips" type="button"><i class="mi i-road"></i>Trasy</button>
+  <button id="tabDiary" type="button"><i class="mi i-book"></i>Dziennik</button>
 </nav>
 
 <div id="toast"></div>
@@ -2199,12 +2203,15 @@ $('#tripChip').onclick=()=>{tripLayer.clearLayers();$('#tripChip').hidden=true;$
 /* ---------- zakładki ---------- */
 function setTab(t){
   tab=t;
-  $('#tabMap').classList.toggle('on',t==='map');$('#tabTrips').classList.toggle('on',t==='trips');
-  $('#trips').hidden=t!=='trips';
+  $('#tabMap').classList.toggle('on',t==='map');$('#tabTrips').classList.toggle('on',t==='trips');$('#tabDiary').classList.toggle('on',t==='diary');
+  $('#trips').hidden=t!=='trips';$('#diary').hidden=t!=='diary';
+  if(t==='diary'){const f=$('#diaryFrame');if(!f.getAttribute('src'))f.setAttribute('src',f.dataset.src)}
+  if(t==='diary')closeSheets();
   if(t==='trips'){closeSheets();renderTrips()}
 }
 $('#tabMap').onclick=()=>setTab('map');
 $('#tabTrips').onclick=()=>{tripOpen=null;setTab('trips')};
+$('#tabDiary').onclick=()=>setTab('diary');
 
 function simulate(n){
   stopSim();stopDemo();if(trip)trip.sim=true;still=false;slowN=0;

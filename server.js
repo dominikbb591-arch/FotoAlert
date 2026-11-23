@@ -15,7 +15,7 @@ const path = require('path');
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 // Pliki aplikacji mogą leżeć w folderze public/ albo obok server.js (płaski układ, wygodny przy wgrywaniu z telefonu).
 const PUB = fs.existsSync(path.join(__dirname, 'public', 'index.html')) ? path.join(__dirname, 'public') : __dirname;
-const STATIC_FILES = new Set(['index.html', 'sw.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon.svg']);
+const STATIC_FILES = new Set(['index.html', 'autokoszty.html', 'sw.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon.svg']);
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 
 // czas życia zgłoszenia w minutach
