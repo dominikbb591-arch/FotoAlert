@@ -20,7 +20,8 @@ const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 
 // czas życia zgłoszenia w minutach
 const TTL = { police: 90, camera: 120, accident: 150, stopped: 60, animal: 60, obstacle: 60, lane: 180,
-  closed: 240, jam: 45, roadwork: 360, ice: 180, fog: 120, pothole: 1440 };
+  closed: 240, jam: 45, roadwork: 360, ice: 180, fog: 120, pothole: 1440,
+  breakdown: 90, debris: 90, rockfall: 240, detour: 480 };
 const FUELS = ['pb95', 'pb98', 'on', 'lpg'];
 const ONLINE_MS = 45000;
 

@@ -1,4 +1,4 @@
-const CACHE = 'fotoalert-v3';
+const CACHE = 'fotoalert-v5';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'];
 const BYPASS = ['overpass', 'nominatim.openstreetmap.org', 'routing.openstreetmap.de', 'router.project-osrm.org'];
@@ -29,7 +29,7 @@ self.addEventListener('fetch', e => {
   }
   // kafelki mapy i Leaflet: najpierw pamięć podręczna
   e.respondWith(caches.match(r).then(hit => hit || fetch(r).then(res => {
-    if (res.ok && (r.url.includes('basemaps.cartocdn.com') || r.url.includes('tile.openstreetmap.org') || r.url.includes('unpkg.com'))) {
+    if (res.ok && (r.url.includes('tile.openstreetmap.org') || r.url.includes('unpkg.com'))) {
       const cp = res.clone();
       caches.open(CACHE).then(async c => { await c.put(r, cp); trim(c, 600); });
     }
