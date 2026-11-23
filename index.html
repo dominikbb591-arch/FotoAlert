@@ -487,8 +487,7 @@ class LMap{
   constructor(id,opts){
     this._lc={same:true};this.lines=new Set();this._popup=null;this._before=undefined;this.hand={};this.styleOk=false;this.fb=false;this.errN=0;this.okN=0;
     const ml=this.ml=new maplibregl.Map({container:id,style:VEC?STYLE_URL:RASTER,center:[21.0122,52.2297],zoom:14,attributionControl:false,
-      maxPitch:70,pitchWithRotate:false,dragRotate:false,fadeDuration:150,localIdeographFontFamily:false,maxZoom:21});
-    try{ml.touchZoomRotate.disableRotation()}catch(e){}
+      maxPitch:70,pitchWithRotate:false,fadeDuration:150,localIdeographFontFamily:false,maxZoom:21});
     try{ml.touchPitch&&ml.touchPitch.disable()}catch(e){}
     ml.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:'Mapa: OpenFreeMap, OpenMapTiles'}),'bottom-left');
     ml.on('style.load',()=>{this.styleOk=true;this._decorate();this._capture();this._applyNight();this.lines.forEach(l=>l._ensure());
@@ -497,7 +496,11 @@ class LMap{
     ml.on('sourcedata',e=>{if(e&&e.tile&&e.isSourceLoaded!==false)this.okN++});
     setTimeout(()=>{if(!this.styleOk)this._fallback()},9000);
     ml.once('load',()=>{setTimeout(()=>{const a=document.querySelector('.maplibregl-ctrl-attrib');if(a){a.classList.remove('maplibregl-compact-show');a.removeAttribute('open')}},50)});
-    this.night=false;this.orig=null;this._lc=null;
+    this.night=false;this.orig=null;this._lc=null;this.touching=false;this._easeUntil=0;
+    const cc=ml.getCanvasContainer();
+    ['touchstart','mousedown'].forEach(n=>cc.addEventListener(n,()=>{this.touching=true},{passive:true}));
+    ['touchend','touchcancel','mouseup'].forEach(n=>window.addEventListener(n,()=>{setTimeout(()=>{this.touching=false},60)},{passive:true}));
+    ml.on('rotatestart',e=>{if(e&&e.originalEvent)this._fire('userrotate',{})});
     window.__mapStatus=VEC?'wektorowa (OpenFreeMap), ładuję…':'zwykła mapa OSM (wybrana w ustawieniach)';
     this._longPress(ml);
     ml.on('contextmenu',e=>this._fire('contextmenu',{latlng:{lat:e.lngLat.lat,lng:e.lngLat.lng}}));
@@ -557,17 +560,19 @@ class LMap{
   _fire(ev,arg){(this.hand[ev]||[]).forEach(f=>f(arg))}
   on(evs,fn){
     String(evs).split(/\s+/).forEach(ev=>{
-      if(ev==='contextmenu'){(this.hand[ev]=this.hand[ev]||[]).push(fn);return}
+      if(ev==='contextmenu'||ev==='userrotate'){(this.hand[ev]=this.hand[ev]||[]).push(fn);return}
       this.ml.on(ev,fn);
     });return this;
   }
   setView(c,z){
     const p=ll(c),o={center:[p.lon,p.lat]};if(z!=null)o.zoom=z-1;
+    if(this.touching||Date.now()<this._easeUntil)return this;
     const k=this._lc,cur=this.ml.getCenter();
     if(k&&k.same&&Math.abs(cur.lat-p.lat)<1e-7&&Math.abs(cur.lng-p.lon)<1e-7&&(z==null||Math.abs(this.ml.getZoom()-(z-1))<1e-3))return this;
     this.ml.jumpTo(o);return this}
   getZoom(){return this.ml.getZoom()+1}
-  setZoom(z){this.ml.easeTo({zoom:z-1,duration:350});return this}
+  setZoom(z){this._easeUntil=Date.now()+380;this.ml.easeTo({zoom:z-1,duration:350});return this}
+  resetNorth(){this._easeUntil=Date.now()+380;this.ml.easeTo({bearing:0,duration:350})}
   getCenter(){const c=this.ml.getCenter();return {lat:c.lat,lng:c.lng}}
   getBounds(){const b=this.ml.getBounds();return new LB(b.getSouth(),b.getWest(),b.getNorth(),b.getEast())}
   getBearing(){return this.ml.getBearing()}
@@ -578,13 +583,14 @@ class LMap{
     return this;
   }
   cam(lat,lon,bearing,pitch,padTop){
+    if(this.touching||Date.now()<this._easeUntil)return;
     const ml=this.ml,c=ml.getCenter();
     if(Math.abs(c.lat-lat)<1e-7&&Math.abs(c.lng-lon)<1e-7&&Math.abs(((ml.getBearing()-bearing+540)%360)-180)<0.05&&Math.abs(ml.getPitch()-pitch)<0.05&&this._pad===padTop)return;
     this._pad=padTop;
     ml.jumpTo({center:[lon,lat],bearing,pitch,padding:{top:padTop,bottom:0,left:0,right:0}});
   }
   setMode(on,padTop,bearing){
-    this._pad=on?padTop:0;
+    this._pad=on?padTop:0;this._easeUntil=Date.now()+560;
     this.ml.easeTo({pitch:on?60:0,bearing:on?bearing:0,padding:{top:on?padTop:0,bottom:0,left:0,right:0},duration:500});
   }
   hasLayer(l){return !!l._m}
@@ -688,7 +694,7 @@ function applyTheme(){
 }
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),3500)}
 function info(t){$('#info').textContent=t}
-map.on('dragstart',()=>{follow=false;clearTimeout(dragTimer);if(nav)dragTimer=setTimeout(()=>{follow=true},10000)});
+map.on('dragstart userrotate',()=>{follow=false;clearTimeout(dragTimer);if(nav)dragTimer=setTimeout(()=>{follow=true},10000)});
 
 /* ---------- Overpass: kolejka zapytań ---------- */
 const OVP=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
@@ -1764,7 +1770,7 @@ $('#bSet').onclick=()=>{
   openSheet('#shSet');
 };
 $('#b3d').onclick=()=>{S.view3d=!S.view3d;jset('fa.s',S);if(me)follow=true;applyMode();toast(S.view3d?'Widok 3D: kamera za strzałką':'Widok 2D: mapa z góry')};
-$('#bLocate').onclick=()=>{follow=true;if(me)map.setView([me.lat,me.lon],nav?17:16);else toast('Czekam na pozycję GPS…')};
+$('#bLocate').onclick=()=>{follow=true;if(!S.view3d)map.resetNorth();if(me)map.setView([me.lat,me.lon],nav?17:16);else toast('Czekam na pozycję GPS…')};
 [['#oSound','sound'],['#oVoice','voice'],['#oVib','vib'],['#oMi','mi'],['#oCam','camOn'],['#oFuel','fuelOn'],['#oZab','zabkaOn']].forEach(([s,k])=>{
   $(s).onchange=e=>{S[k]=e.target.checked;jset('fa.s',S);if(me)showSpeed();renderPOI()};
 });
