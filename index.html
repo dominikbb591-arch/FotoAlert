@@ -105,6 +105,10 @@ svg{display:block}
 
 /* ---------- dół ---------- */
 #navbar{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 64px);z-index:560;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+#arr{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 64px);z-index:780;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:22px;box-shadow:0 10px 40px #000a;padding:16px}
+#arr h3{margin:0 0 2px;font-size:20px}#arr p{margin:0 0 10px;color:var(--mute);font-size:15px}
+.asum{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:6px 0 12px}.asum div{background:var(--panel2);border-radius:12px;padding:8px 10px}.asum b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.asum span{font-size:12px;color:var(--mute)}
+.asum .pc1,.asum .pc2,.asum .pc3,.asum .pc4{background:var(--panel2)}
 #navbar .r1{display:flex;align-items:center;gap:10px}
 #navbar .eta{flex:1;min-width:0}
 #navbar .eta b{font-size:28px;line-height:1;font-variant-numeric:tabular-nums}
@@ -348,6 +352,7 @@ select.inp{padding:0 6px}
 </div>
 <button id="bReport" aria-label="Zgłoś zdarzenie"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Zgłoś</span></button>
 
+<div id="arr" hidden role="dialog" aria-live="assertive"></div>
 <div id="navbar" hidden>
   <div class="r1">
     <div class="eta"><b id="bEta">—</b><span id="bRem"></span></div>
@@ -545,6 +550,7 @@ class LMap{
     ['touchstart','mousedown'].forEach(n=>cc.addEventListener(n,()=>{this.touching=true},{passive:true}));
     ['touchend','touchcancel','mouseup'].forEach(n=>window.addEventListener(n,()=>{setTimeout(()=>{this.touching=false},60)},{passive:true}));
     ml.on('rotatestart',e=>{if(e&&e.originalEvent)this._fire('userrotate',{})});
+    ml.on('zoomstart',e=>{if(e&&e.originalEvent)this._fire('userzoom',{})});
     window.__mapStatus=VEC?'wektorowa (OpenFreeMap), ładuję…':'zwykła mapa OSM (wybrana w ustawieniach)';
     this._longPress(ml);
     ml.on('contextmenu',e=>this._fire('contextmenu',{latlng:{lat:e.lngLat.lat,lng:e.lngLat.lng}}));
@@ -604,7 +610,7 @@ class LMap{
   _fire(ev,arg){(this.hand[ev]||[]).forEach(f=>f(arg))}
   on(evs,fn){
     String(evs).split(/\s+/).forEach(ev=>{
-      if(ev==='contextmenu'||ev==='userrotate'){(this.hand[ev]=this.hand[ev]||[]).push(fn);return}
+      if(ev==='contextmenu'||ev==='userrotate'||ev==='userzoom'){(this.hand[ev]=this.hand[ev]||[]).push(fn);return}
       this.ml.on(ev,fn);
     });return this;
   }
@@ -679,8 +685,8 @@ let me=null,last=null,watchId=null,demoTimer=null,simTimer=null,wake=null,starte
 let pvTok=0,nav=null,navPreview=false,follow=true,plan=[],place=null,disp=null,tgt=null,selMarker=null,dragTimer=null;
 let reports=[],prices={},demoCam=null,camAll=[],cells=jget('fa.cells',{});
 let fuelNear=null,fuelAt=0,trip=null,trips=jget('fa.trips',[]),tripOpen=null,tripSnapAt=0,tab='map';
-window.__fa={routeInfo:r=>routeInfo(r),instr:s=>instr(s),addReport:r=>reports.push(r),clearReports:()=>{reports=[]}};
-let active=null,lastBeep=0,roads=null,roadsAt=null,roadsBusy=false,roadsFail=0,lastReroute=0,zoomAt=0;
+window.__fa={styleWin:ms=>{dyn.win=ms},routeInfo:r=>routeInfo(r),instr:s=>instr(s),addReport:r=>reports.push(r),clearReports:()=>{reports=[]}};
+let active=null,lastBeep=0,roads=null,roadsAt=null,roadsBusy=false,roadsFail=0,lastReroute=0,zoomAt=0,autoZ=true;
 const alerted={};
 
 /* ---------- typy ---------- */
@@ -738,6 +744,7 @@ function applyTheme(){
 }
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),3500)}
 function info(t){$('#info').textContent=t}
+map.on('userzoom',()=>{autoZ=false});
 map.on('dragstart userrotate',()=>{follow=false;clearTimeout(dragTimer);if(nav)dragTimer=setTimeout(()=>{follow=true},10000)});
 
 /* ---------- Overpass: kolejka zapytań ---------- */
@@ -1074,33 +1081,42 @@ function updateLimit(){
 }
 
 /* ---------- styl jazdy ---------- */
-const dyn={v:null,t:null,hd:null,s:[],state:'eco',hint:''};
-function styleReset(){dyn.v=null;dyn.t=null;dyn.hd=null;dyn.s=[];dyn.state='eco';dyn.hint=''}
+const dyn={v:null,t:null,hd:null,state:'eco',hint:'Płynna jazda',w0:0,cnt:[0,0,0],why:{},win:17000};
+function styleReset(){dyn.v=null;dyn.t=null;dyn.hd=null;dyn.state='eco';dyn.hint='Płynna jazda';dyn.w0=0;dyn.cnt=[0,0,0];dyn.why={}}
+/* każdy odczyt GPS dostaje ocenę 0/1/2; co ~17 s liczymy średnią i dopiero wtedy zmieniamy wyświetlany styl */
 function styleTick(){
   const now=me.t,v=me.spd;
   if(dyn.t!=null){
     const dt=(now-dyn.t)/1000;
     if(dt>0.4&&dt<5){
-      const a=(v-dyn.v)/dt;
+      const a=clamp((v-dyn.v)/dt,-8,8),over=shownLim?v*3.6-shownLim.v:-99;
       let lat=0;
       if(me.hd!=null&&dyn.hd!=null&&v>5){const dh=adiff(me.hd,dyn.hd);if(dh<60)lat=v*rad(dh)/dt}
-      dyn.s.push({t:now,a:clamp(a,-8,8),lat,over:shownLim?v*3.6-shownLim.v:-99});
+      let lv=0,why='';
+      if(a>2.3){lv=2;why='Łagodniej przyspieszaj'}
+      else if(a<-3){lv=2;why='Hamuj łagodniej'}
+      else if(lat>3.5){lv=2;why='Łagodniej na zakrętach'}
+      else if(over>10){lv=2;why='Zwolnij, przekraczasz limit'}
+      else if(a>1.4){lv=1;why='Przyspieszaj spokojniej'}
+      else if(a<-2){lv=1;why='Wyprzedzaj ruch, hamuj łagodniej'}
+      else if(lat>2.3){lv=1;why='Zakręty trochę ostro'}
+      else if(over>3){lv=1;why='Lekko ponad limitem'}
+      if(v>1||dyn.v>1){dyn.cnt[lv]++;if(lv)dyn.why[why]=(dyn.why[why]||0)+lv}
       dyn.v=dyn.v*0.4+v*0.6;dyn.t=now;dyn.hd=me.hd;
     }else{dyn.v=v;dyn.t=now;dyn.hd=me.hd}
   }else{dyn.v=v;dyn.t=now;dyn.hd=me.hd}
-  dyn.s=dyn.s.filter(x=>now-x.t<20000);
-  let maxA=0,minA=0,maxL=0,maxO=-99;
-  dyn.s.forEach(x=>{if(x.a>maxA)maxA=x.a;if(x.a<minA)minA=x.a;if(x.lat>maxL)maxL=x.lat;if(x.over>maxO)maxO=x.over});
-  let st='eco',hint='Płynna jazda';
-  if(maxA>2.3){st='dyn';hint='Łagodniej przyspieszaj'}
-  else if(minA<-3){st='dyn';hint='Hamuj łagodniej'}
-  else if(maxL>3.5){st='dyn';hint='Łagodniej na zakrętach'}
-  else if(maxO>10){st='dyn';hint='Zwolnij, przekraczasz limit'}
-  else if(maxA>1.4){st='mid';hint='Przyspieszaj spokojniej'}
-  else if(minA<-2){st='mid';hint='Wyprzedzaj ruch, hamuj łagodniej'}
-  else if(maxL>2.3){st='mid';hint='Zakręty trochę ostro'}
-  else if(maxO>3){st='mid';hint='Lekko ponad limitem'}
-  dyn.state=st;dyn.hint=hint;
+  if(!dyn.w0)dyn.w0=now;
+  if(now-dyn.w0>=dyn.win){
+    const c=dyn.cnt,n=c[0]+c[1]+c[2];
+    if(n>=4){
+      const mean=(c[1]+2*c[2])/n;
+      dyn.state=mean<0.4?'eco':mean<1.4?'mid':'dyn';
+      let hint='Płynna jazda',bw=0;
+      if(dyn.state!=='eco')for(const k in dyn.why)if(dyn.why[k]>bw){bw=dyn.why[k];hint=k}
+      dyn.hint=hint;
+    }
+    if(n>=4){dyn.cnt=[0,0,0];dyn.why={};dyn.w0=now}
+  }
 }
 function showStyle(){
   const el=$('#bStyle');el.className=dyn.state;
@@ -1159,10 +1175,10 @@ function frame(ts){
   if(arrowEl)arrowEl.setAttribute('transform',`rotate(${(disp.hd-map.getBearing()).toFixed(1)} 17 17)`);
   if(follow&&S.view3d){
     map.cam(disp.lat,disp.lon,disp.hd,60,padTop3d());
+  }else if(follow&&nav){
+    map.cam(disp.lat,disp.lon,disp.hd,0,Math.round(innerHeight*0.3));   // mapa obraca się za strzałką, strzałka w dolnej części ekranu
   }else if(follow){
-    let la=disp.lat,lo=disp.lon;
-    if(nav&&tgt.spd>3){const mpp=156543.03*Math.cos(rad(la))/Math.pow(2,map.getZoom());const m=mpp*70;la+=m*Math.cos(rad(disp.hd))/110540;lo+=m*Math.sin(rad(disp.hd))/(111320*Math.cos(rad(la)))}
-    map.setView([la,lo],map.getZoom(),{animate:false});
+    map.setView([disp.lat,disp.lon],map.getZoom(),{animate:false});
   }
 }
 const padTop3d=()=>Math.round(innerHeight*0.44);
@@ -1172,7 +1188,7 @@ function applyMode(){
   map.setMode(!!S.view3d,padTop3d(),disp?disp.hd:0);
 }
 function autoZoom(){
-  if(!follow||Date.now()-zoomAt<8000)return;
+  if(!autoZ||!follow||Date.now()-zoomAt<8000)return;
   const sp=me.spd;
   const z=nav?(sp>20?15:sp>12?16:17):(sp>20?14:sp>10?15:16);
   if(Math.abs(map.getZoom()-z)>=1){zoomAt=Date.now();map.setZoom(z)}
@@ -1501,8 +1517,8 @@ $('#plClr').onclick=()=>{plan=[];renderPlanUI();closeSheets()};
 /* ---------- nawigacja ---------- */
 const ROUTERS=['https://routing.openstreetmap.de/routed-car/route/v1/driving/','https://router.project-osrm.org/route/v1/driving/'];
 const exclList=()=>[S.hwy===false?'motorway':null,S.toll===false?'toll':null].filter(Boolean);
-async function osrmGet(u,coords,ex,alt){
-  const base=`${u}${coords}?overview=full&geometries=geojson&steps=true`+(alt?'&alternatives=3':'')+(ex?'&exclude='+ex:'');
+async function osrmGet(u,coords,ex,alt,bear){
+  const base=`${u}${coords}?overview=full&geometries=geojson&steps=true`+(alt?'&alternatives=3':'')+(ex?'&exclude='+ex:'')+(bear?'&bearings='+bear:'');
   let r=await fetch(base+'&annotations=distance,duration');
   if(!r.ok&&r.status===400)r=await fetch(base);
   if(!r.ok)throw new Error('route '+r.status);
@@ -1510,17 +1526,29 @@ async function osrmGet(u,coords,ex,alt){
   if(j.code!=='Ok'||!j.routes||!j.routes.length)throw new Error(j.code||'no route');
   return j.routes;
 }
-async function fetchRoutes(from,pts,alt){
+async function fetchRoutes(from,pts,alt,bear){
   const coords=[from].concat(pts).map(p=>p.lon+','+p.lat).join(';'),want=exclList(),tries=[];
   if(want.length){tries.push(want.join(','));if(want.length>1)tries.push(want[0])}
   tries.push('');
   let err;
   for(const ex of tries)for(const u of ROUTERS){
-    try{return {routes:await osrmGet(u,coords,ex,alt&&pts.length===1),applied:ex,want:want.join(','),coords}}catch(e){err=e}
+    try{return {routes:await osrmGet(u,coords,ex,alt&&pts.length===1,bear),applied:ex,want:want.join(','),coords}}catch(e){err=e}
   }
   throw err;
 }
 async function fetchRoute(from,pts){return (await fetchRoutes(from,pts,false)).routes[0]}
+/* Po zboczeniu z trasy: najpierw szukamy drogi do celu w kierunku, w którym jedzie kierowca (bez zawracania).
+   Zawrócenie proponujemy tylko, gdy dalszej drogi nie ma albo trasa wydłuża się o ponad REROUTE_MAX_EXTRA_S. */
+const REROUTE_MAX_EXTRA_S=15*60;
+async function smartReroute(from,rest){
+  const hd=from.hd!=null&&from.spd>2?Math.round(from.hd):null;
+  const bear=hd!=null?hd+',50'+';'.repeat(rest.length):null;
+  const [a,b]=await Promise.allSettled([bear?fetchRoutes(from,rest,false,bear):Promise.reject(),fetchRoutes(from,rest,false)]);
+  const ra=a.status==='fulfilled'?a.value.routes[0]:null,rb=b.status==='fulfilled'?b.value.routes[0]:null;
+  if(ra&&(!rb||ra.duration<=rb.duration+REROUTE_MAX_EXTRA_S))return ra;
+  if(rb)return rb;
+  throw new Error('no route');
+}
 /* Szacunek zużycia paliwa: jazda ze stałą prędkością (zależną od prędkości) + energia przyspieszeń
    + hamowanie/ruszanie na skrętach i rondach + postój (opóźnienia z serwera tras). To model, nie pomiar. */
 function routeInfo(r){
@@ -1665,7 +1693,7 @@ function beginNav(n){
   if(selMarker){map.removeLayer(selMarker);selMarker=null}
   $('#searchRow').hidden=true;$('#results').hidden=true;$('#nav').hidden=false;$('#navbar').hidden=false;
   styleReset();showStyle();renderPlanUI();
-  follow=true;if(me)map.setView([me.lat,me.lon],17);
+  follow=true;autoZ=true;if(me)map.setView([me.lat,me.lon],17);
   say('Rozpoczynam nawigację',false);
   navTick(me?routeProgress(me.lat,me.lon):null);
 }
@@ -1673,7 +1701,8 @@ function endNav(msg){
   tripFinish(msg==='Dojechałeś do celu');$('#top').classList.remove('navmode');
   nav=null;plan=[];clearRoute();renderPlanUI();$('#evPill').hidden=true;
   if(simActive){simActive=false;stopSim();if(geoWanted)startGeo()}
-  $('#nav').hidden=true;$('#navbar').hidden=true;$('#searchRow').hidden=false;updateBot();
+  $('#nav').hidden=true;$('#navbar').hidden=true;$('#searchRow').hidden=false;updateBot();$('#arr').hidden=true;
+  applyMode();
   if(msg)toast(msg);
 }
 $('#nX').onclick=()=>endNav('Zakończono nawigację, trasa usunięta');
@@ -1733,24 +1762,25 @@ function routeProgress(lat,lon){
   return b;
 }
 function navTick(b){
-  const n=nav;if(!n||!me)return;
+  const n=nav;if(!n||!me||n.arrived)return;
   if(!b)b=routeProgress(me.lat,me.lon);if(!b)return;
   n.idx=b.i;
   if(b.d>50&&me.spd>2)n.off++;else n.off=0;
   if(n.off>=3&&Date.now()-lastReroute>12000){
     lastReroute=Date.now();n.off=0;say('Przeliczam trasę',false);
     const rest=n.stops.slice(n.reached);
-    fetchRoute(me,rest).then(r=>{if(nav!==n)return;const nn=buildNav(r,rest);nav=nn;drawRoute(nn);renderPlanUI()}).catch(()=>{});
+    smartReroute(me,rest).then(r=>{if(nav!==n)return;const nn=buildNav(r,rest);nav=nn;drawRoute(nn);renderPlanUI()}).catch(()=>{});
   }
   const progM=b.prog*n.scale,remain=Math.max(0,n.total-progM);
   let k=n.stepI;while(k<n.steps.length-1&&n.mcum[k]<=progM+5)k++;
   n.stepI=k;
   n.wpIdx.forEach(j=>{
-    if(j<k&&!n.wpDone[j]){
-      n.wpDone[j]=1;n.reached++;renderPlanUI();
-      const t=n.steps[j].wpTitle;toast('Przystanek: '+(t||'osiągnięty'));say('Dojechałeś do przystanku',false);
+    if(!n.wpDone[j]&&n.mcum[j]-progM<=40){
+      n.wpDone[j]=1;n.reached++;renderPlanUI();n.wpAsk=j;
+      showArrive('stop',n,n.steps[j].wpTitle);say('Dojechałeś do przystanku',false);
     }
   });
+  if(n.wpAsk!=null&&progM-n.mcum[n.wpAsk]>150)contStop(n);   // pojechał dalej bez odpowiedzi: kontynuujemy
   const s=n.steps[k],dNext=Math.max(0,n.mcum[k]-progM),ins=instr(s);
   $('#nIco').innerHTML=manSVG(s);
   $('#nD').textContent=fmtD(dNext);
@@ -1780,7 +1810,26 @@ function navTick(b){
     if(dNext<=far&&dNext>70&&!n.said1[k]){n.said1[k]=1;say(`Za ${Math.round(dNext/50)*50} metrów, ${spoken}`,false)}
     if(dNext<=45&&!n.said2[k]){n.said2[k]=1;say(spoken,false)}
   }
-  if(remain<35){say('Dojechałeś do celu',false);endNav('Dojechałeś do celu')}
+  if(remain<35&&!n.arrived){n.arrived=true;say('Dojechałeś do celu',false);showArrive('end',n,n.steps[n.steps.length-1].wpTitle)}
+}
+
+/* ---------- dojazd do przystanku / celu ---------- */
+function contStop(n){
+  if(n.wpAsk==null)return;
+  n.stepI=Math.max(n.stepI,n.wpAsk+1);n.wpAsk=null;$('#arr').hidden=true;
+  say('Kontynuuję trasę',false);
+}
+function showArrive(kind,n,title){
+  const el=$('#arr'),t=trip;let sum='';
+  if(kind==='end'&&t){
+    const sec=Math.max(1,(Date.now()-t.t0)/1000),p=ecoPct(t),k=S.mi?0.621371:1,sp=Math.round(t.dist/sec*3.6*k);
+    sum=`<div class="asum"><div><b>${fmtD(t.dist)}</b><span>dystans</span></div><div><b>${fmtDur(sec)}</b><span>czas jazdy</span></div><div><b>${sp} ${S.mi?'mph':'km/h'}</b><span>średnia</span></div>${p==null?'':`<div class="${pcCls(p)}"><b>${p}%</b><span>ekonomicznie</span></div>`}</div>`;
+  }
+  el.innerHTML=`<h3>${kind==='end'?'Dojechałeś do celu':'Dojechałeś do przystanku'}</h3><p>${esc(title||'')}</p>${sum}
+  <div class="btns">${kind==='end'?'<button class="btn pri" id="arrEnd">Zakończ trasę</button>':'<button class="btn pri" id="arrGo">Kontynuuj trasę</button><button class="btn" id="arrEnd">Zakończ trasę</button>'}</div>`;
+  el.hidden=false;
+  $('#arrEnd').onclick=()=>{el.hidden=true;endNav(kind==='end'?'Dojechałeś do celu':'Zakończono nawigację')};
+  if(kind==='stop')$('#arrGo').onclick=()=>contStop(n);
 }
 
 /* ---------- zdarzenia na trasie ---------- */
@@ -1988,7 +2037,7 @@ function setMenu(on){
 $('#bMenu').onclick=()=>setMenu($('#sideMenu').hidden);
 $('#sideMenu').addEventListener('click',()=>setTimeout(()=>setMenu(false),0));
 $('#b3d').onclick=()=>{S.view3d=!S.view3d;jset('fa.s',S);if(me)follow=true;applyMode();toast(S.view3d?'Widok 3D: kamera za strzałką':'Widok 2D: mapa z góry')};
-$('#bLocate').onclick=()=>{follow=true;if(!S.view3d)map.resetNorth();if(me)map.setView([me.lat,me.lon],nav?17:16);else toast('Czekam na pozycję GPS…')};
+$('#bLocate').onclick=()=>{follow=true;autoZ=false;if(!me){toast('Czekam na pozycję GPS…');return}if(!S.view3d&&!nav)map.resetNorth();map.setView([me.lat,me.lon])};   // przybliżenie zostaje takie, jak ustawił użytkownik
 [['#oSound','sound'],['#oVoice','voice'],['#oVib','vib'],['#oMi','mi'],['#oCam','camOn'],['#oFuel','fuelOn'],['#oZab','zabkaOn']].forEach(([s,k])=>{
   $(s).onchange=e=>{S[k]=e.target.checked;jset('fa.s',S);if(me)showSpeed();renderPOI()};
 });
