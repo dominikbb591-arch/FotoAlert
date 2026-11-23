@@ -1,4 +1,4 @@
-const CACHE = 'fotoalert-v16';
+const CACHE = 'fotoalert-v17';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js', 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'];
 const BYPASS = ['overpass', 'nominatim.openstreetmap.org', 'routing.openstreetmap.de', 'router.project-osrm.org', 'photon.komoot.io', 'valhalla1.openstreetmap.de'];

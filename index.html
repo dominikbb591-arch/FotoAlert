@@ -1481,9 +1481,11 @@ map.on('contextmenu',async e=>{
 });
 
 /* ---------- panel miejsca, stacje, zapisane ---------- */
-function openSheet(id){closeSheets(true);$(id).classList.remove('peek','min');$(id).classList.add('on');$('#scrim').classList.add('on')}
+function endPreview(){if(navPreview){navPreview=false;clearRoute()}}
+function openSheet(id){closeSheets(true);if(id!=='#shPlace'||!window.__pvOpen)endPreview();$(id).classList.remove('peek','min');$(id).classList.add('on');$('#scrim').classList.add('on')}
 function closeSheets(keepSel){
   document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('on'));$('#scrim').classList.remove('on');
+  if(keepSel!==true)endPreview();
   if(keepSel!==true&&selMarker&&!navPreview){map.removeLayer(selMarker);selMarker=null}
 }
 const same=(a,b)=>Math.abs(a.lat-b.lat)<2e-5&&Math.abs(a.lon-b.lon)<2e-5;
@@ -1669,7 +1671,7 @@ async function vhGet(from,pts,o){
   }finally{clearTimeout(to)}
 }
 const passes=r=>{const i=r.info||(r.info=routeInfo(r));return !(S.hwy===false&&i.hw)&&!(S.toll===false&&i.toll)};
-async function fetchRoutes(from,pts,alt,bear){
+async function fetchRoutes(from,pts,alt,bear,loose){
   const coords=[from].concat(pts).map(p=>p.lon+','+p.lat).join(';'),want=exclList(),w=want.join(',');
   const hd=bear?parseInt(bear,10):null;
   let err;
@@ -1677,9 +1679,10 @@ async function fetchRoutes(from,pts,alt,bear){
     try{
       const rs=(await vhGet(from,pts,{alt,noHw:S.hwy===false,noToll:S.toll===false,bear:hd})).filter(passes);
       if(rs.length)return {routes:rs,applied:w,want:w,coords};
+      vhNone=true;
     }catch(e){err=e}
   }
-  let last=null;
+  let last=null,vhNone=false;
   for(const u of ROUTERS){
     try{
       const rs=await osrmGet(u,coords,'',alt&&pts.length===1,bear);
@@ -1688,18 +1691,18 @@ async function fetchRoutes(from,pts,alt,bear){
       last=last||rs;
     }catch(e){err=e}
   }
-  if(last)return {routes:last,applied:'',want:w,coords};
-  try{const rs=await vhGet(from,pts,{alt,noHw:S.hwy===false,noToll:S.toll===false,bear:hd});if(rs.length)return {routes:rs,applied:w,want:w,coords}}catch(e){err=err||e}
+  try{const rs=(await vhGet(from,pts,{alt,noHw:S.hwy===false,noToll:S.toll===false,bear:hd})).filter(passes);if(rs.length)return {routes:rs,applied:w,want:w,coords}}catch(e){err=err||e}
+  if(last)return loose?{routes:last,applied:'',want:w,coords}:{routes:[],blocked:true,applied:w,want:w,coords};
   throw err||new Error('no route');
 }
-async function fetchRoute(from,pts){return (await fetchRoutes(from,pts,false)).routes[0]}
+async function fetchRoute(from,pts){return (await fetchRoutes(from,pts,false,null,true)).routes[0]}
 /* Po zboczeniu z trasy: najpierw szukamy drogi do celu w kierunku, w którym jedzie kierowca (bez zawracania).
    Zawrócenie proponujemy tylko, gdy dalszej drogi nie ma albo trasa wydłuża się o ponad REROUTE_MAX_EXTRA_S. */
 const REROUTE_MAX_EXTRA_S=15*60;
 async function smartReroute(from,rest){
   const hd=from.hd!=null&&from.spd>2?Math.round(from.hd):null;
   const bear=hd!=null?hd+',50'+';'.repeat(rest.length):null;
-  const [a,b]=await Promise.allSettled([bear?fetchRoutes(from,rest,false,bear):Promise.reject(),fetchRoutes(from,rest,false)]);
+  const [a,b]=await Promise.allSettled([bear?fetchRoutes(from,rest,false,bear,true):Promise.reject(),fetchRoutes(from,rest,false,null,true)]);
   const ra=a.status==='fulfilled'?a.value.routes[0]:null,rb=b.status==='fulfilled'?b.value.routes[0]:null;
   if(ra&&(!rb||ra.duration<=rb.duration+REROUTE_MAX_EXTRA_S))return ra;
   if(rb)return rb;
@@ -1725,6 +1728,7 @@ function routeInfo(r){
     });
     l.steps.forEach(st=>{
       const ty=st.maneuver&&st.maneuver.type,md=st.maneuver&&st.maneuver.modifier;
+      if(/^A\d{1,2}(\b|$)/.test(String(st.ref||''))||/^A\d{1,2}$/.test(String(st.name||''))){hw=true;hwM+=st.distance}
       let isHw=false;(st.intersections||[]).forEach(i=>(i.classes||[]).forEach(c=>{if(c==='motorway'){hw=true;isHw=true}if(c==='toll')toll=true}));
       if(isHw)hwM+=st.distance;
       if((ty==='turn'||ty==='end of road'||ty==='roundabout'||ty==='rotary'||ty==='fork')&&md!=='straight')turns++;
@@ -1753,6 +1757,7 @@ function routeSimilar(a,b){
 }
 async function gatherRoutes(from,pts){
   const main=await fetchRoutes(from,pts,true);
+  if(!main.routes.length)return {list:[],eco:0,short:0,calm:0,applied:main.want,want:main.want,blocked:true};
   let list=main.routes.slice();
   list.forEach(r=>r.info=routeInfo(r));
   const want=main.want,jobs=[];
@@ -1770,7 +1775,8 @@ async function gatherRoutes(from,pts){
   const res=await Promise.allSettled(jobs);
   res.forEach(x=>{if(x.status==='fulfilled')x.value.forEach(r=>{r.info=r.info||routeInfo(r);list.push(r)})});
   // zgodność z filtrami: jeśli są trasy spełniające, pokazujemy tylko je
-  const okList=list.filter(passes);if(okList.length)list=okList;
+  list=list.filter(passes);
+  if(!list.length)return {list:[],eco:0,short:0,calm:0,applied:want,want,blocked:true};
   list.sort((a,b)=>a.duration-b.duration);
   const uniq=[];list.forEach(r=>{if(!uniq.some(u=>routeSimilar(u,r)))uniq.push(r)});
   list=uniq.slice(0,5);
@@ -1815,10 +1821,22 @@ async function routeVia(points){
   if(!me){toast('Czekam na pozycję GPS. Włącz lokalizację lub użyj trybu demo.');return}
   const sh=$('#shPlace'),tok=++pvTok,title=esc(points[points.length-1].title);
   sh.innerHTML=`<h2>${title}</h2><p>Szukam tras…</p>`;
-  openSheet('#shPlace');sh.classList.add('peek');$('#scrim').classList.remove('on');
+  window.__pvOpen=true;openSheet('#shPlace');window.__pvOpen=false;sh.classList.add('peek');$('#scrim').classList.remove('on');
   try{
     const res=await gatherRoutes(me,points);
     if(tok!==pvTok)return;
+    if(res.blocked||!res.list.length){
+      altLayer.clearLayers();routeCase.setLatLngs([]);routeMain.setLatLngs([]);navPreview=true;
+      const what=[S.hwy===false?'autostrad':'',S.toll===false?'płatnych dróg':''].filter(Boolean).join(' ani ');
+      sh.innerHTML=`<h2>${title}</h2><p>Nie znalazłem trasy bez ${what}. Włącz odpowiednią opcję poniżej, aby zobaczyć trasy.</p>
+      <label class="row">Autostrady <input class="sw" type="checkbox" id="fHwy"${S.hwy===false?'':' checked'}></label>
+      <label class="row">Płatne drogi <input class="sw" type="checkbox" id="fToll"${S.toll===false?'':' checked'}></label>
+      <div class="btns"><button class="btn" id="rX2">Zamknij</button></div>`;
+      $('#fHwy').onchange=e=>{S.hwy=e.target.checked;jset('fa.s',S);routeVia(points)};
+      $('#fToll').onchange=e=>{S.toll=e.target.checked;jset('fa.s',S);routeVia(points)};
+      $('#rX2').onclick=()=>{navPreview=false;clearRoute();closeSheets()};
+      return;
+    }
     const list=res.list,fast=list[0];
     let sel=0,first=true;
     const via=points.length>1?`<p>Przez: ${points.map(p=>esc(p.title)).join(' → ')}</p>`:'';
@@ -1865,13 +1883,13 @@ async function routeVia(points){
     <div class="btns"><button class="btn" id="rX2">Zamknij</button></div>`;
     $('#fHwy').onchange=e=>{S.hwy=e.target.checked;jset('fa.s',S);routeVia(points)};
     $('#fToll').onchange=e=>{S.toll=e.target.checked;jset('fa.s',S);routeVia(points)};
-    $('#rX2').onclick=()=>closeSheets();
+    $('#rX2').onclick=()=>{navPreview=false;clearRoute();closeSheets()};
   }
 }
 function updateBot(){const h=$('#navbar').offsetHeight;document.documentElement.style.setProperty('--bot',(54+(nav&&h?h+10:0))+'px')}
 function beginNav(n){
   if(trip)tripFinish(false);
-  nav=n;plan=[];altLayer.clearLayers();closeSheets();tripStart(n);$('#top').classList.add('navmode');
+  navPreview=false;nav=n;plan=[];altLayer.clearLayers();closeSheets();tripStart(n);$('#top').classList.add('navmode');
   if(selMarker){map.removeLayer(selMarker);selMarker=null}
   $('#searchRow').hidden=true;$('#results').hidden=true;$('#nav').hidden=false;$('#navbar').hidden=false;
   styleReset();showStyle();renderPlanUI();
