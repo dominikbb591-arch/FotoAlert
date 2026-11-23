@@ -216,8 +216,8 @@ select.inp{padding:0 6px}
 .stopn{width:30px;height:30px;border-radius:50%;background:#0b3d91;color:#fff;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;box-shadow:0 2px 8px #000a}
 .stopn.fin{background:#e53935}
 .pin{line-height:1;color:var(--accent);filter:drop-shadow(0 0 1px #1a1200) drop-shadow(0 0 1px #1a1200) drop-shadow(0 2px 4px #000a)}.pin .mi{width:30px;height:34px}.sav .mi{width:14px;height:14px}
-.me{width:34px;height:34px}
-.me svg{width:34px;height:34px;filter:drop-shadow(0 2px 5px #000b)}
+.me{width:34px;height:34px;perspective:160px}
+.me svg{width:34px;height:34px;filter:drop-shadow(0 2px 5px #000b);transform-origin:50% 50%;will-change:transform}
 #toast{position:fixed;left:50%;bottom:calc(var(--sab) + var(--bot) + 120px);transform:translateX(-50%);z-index:900;background:#000d;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;display:none;max-width:80%;text-align:center}
 #toast.on{display:block}
 
@@ -634,6 +634,7 @@ class LMap{
   getCenter(){const c=this.ml.getCenter();return {lat:c.lat,lng:c.lng}}
   getBounds(){const b=this.ml.getBounds();return new LB(b.getSouth(),b.getWest(),b.getNorth(),b.getEast())}
   getBearing(){return this.ml.getBearing()}
+  getPitch(){return this.ml.getPitch()}
   fitBounds(b,o){
     const pad=o&&o.padding?Math.max.apply(null,[].concat(o.padding)):20,pb=(o&&o.padBottom)||0;
     this._pad=0;this.ml.jumpTo({padding:{top:0,bottom:0,left:0,right:0}});
@@ -1201,7 +1202,12 @@ function frame(ts){
   if(tgt.hd!=null){const dh=((tgt.hd-disp.hd+540)%360)-180;disp.hd=(disp.hd+dh*(1-Math.exp(-dt*7))+360)%360}
   meMarker.setLatLng([disp.lat,disp.lon]);
   if(!arrowEl||!arrowEl.isConnected)arrowEl=document.getElementById('arrow');
-  if(arrowEl)arrowEl.setAttribute('transform',`rotate(${(disp.hd-map.getBearing()).toFixed(1)} 17 17)`);
+  if(arrowEl){
+    arrowEl.setAttribute('transform',`rotate(${(disp.hd-map.getBearing()).toFixed(1)} 17 17)`);
+    // w widoku 3D strzałka leży płasko na mapie: cała płaszczyzna jest pochylona o kąt nachylenia kamery
+    const pt=Math.round((map.getPitch?map.getPitch():0)*2)/2,sv=arrowEl.ownerSVGElement;
+    if(sv&&sv._pt!==pt){sv._pt=pt;sv.style.transform=pt>1?`rotateX(${pt}deg) scale(1.15)`:''}
+  }
   if(follow&&S.view3d){
     map.cam(disp.lat,disp.lon,disp.hd,60,padTop3d());
   }else if(follow&&nav){
