@@ -68,7 +68,10 @@ svg{display:block}
 #top{position:fixed;left:10px;right:10px;top:calc(var(--sat) + 38px);z-index:600;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 #top>*{pointer-events:auto}
 #searchRow{display:flex;gap:8px}
-#q{flex:1;min-width:0;height:46px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:0 14px;font-size:16px;box-shadow:var(--shadow)}
+#q::-webkit-search-cancel-button,#q::-webkit-search-decoration{-webkit-appearance:none;display:none}
+.qw{position:relative;flex:1;min-width:0;display:flex}
+#qClr{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:0;background:var(--panel2);color:var(--mute);font-size:22px;line-height:1;padding:0 0 2px;cursor:pointer}
+#q{flex:1;min-width:0;height:46px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:0 44px 0 14px;font-size:16px;box-shadow:var(--shadow)}
 #q::placeholder{color:var(--mute)}
 #bQ{width:46px;height:46px;border-radius:14px;border:0;background:var(--accent);color:#1a1200;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);cursor:pointer}
 #results{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-height:42vh;overflow:auto;box-shadow:var(--shadow)}
@@ -265,6 +268,7 @@ select.inp{padding:0 6px}
 #trips .dl b{font-size:16px;font-variant-numeric:tabular-nums}
 #trips .stats.big{grid-template-columns:repeat(2,1fr)}
 #trips .stats.big b{font-size:22px}
+.res .dd{flex:none;font-size:12px;font-weight:700;color:var(--mute);margin-left:4px}
 .res{display:flex;gap:10px;align-items:center}.res .rb{flex:1;min-width:0}.res .ib{width:34px;height:34px}.res .ib .mi{width:20px;height:20px}.res b,.res span.s{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.res small{display:block;font-size:11px;color:var(--blue);font-weight:700;margin-top:1px}
 .sv .ed{width:100%;height:40px;border-radius:10px;border:1px solid var(--accent);background:var(--panel2);color:var(--fg);padding:0 10px;font-size:16px}
 </style>
@@ -304,7 +308,7 @@ select.inp{padding:0 6px}
 
 <div id="top">
   <form id="searchRow" autocomplete="off">
-    <input id="q" type="search" placeholder="Szukaj ulicy lub miasta" enterkeyhint="search" aria-label="Szukaj ulicy lub miasta">
+    <div class="qw"><input id="q" type="search" placeholder="Szukaj ulicy lub miasta" enterkeyhint="search" aria-label="Szukaj ulicy lub miasta"><button id="qClr" type="button" aria-label="Wyczyść wyszukiwanie" hidden>×</button></div>
     <button id="bQ" class="ic" type="submit" aria-label="Szukaj"><svg viewBox="0 0 24 24" style="stroke:#1a1200;stroke-width:2.6"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg></button>
   </form>
   <div id="results" hidden></div>
@@ -685,7 +689,7 @@ let me=null,last=null,watchId=null,demoTimer=null,simTimer=null,wake=null,starte
 let pvTok=0,nav=null,navPreview=false,follow=true,plan=[],place=null,disp=null,tgt=null,selMarker=null,dragTimer=null;
 let reports=[],prices={},demoCam=null,camAll=[],cells=jget('fa.cells',{});
 let fuelNear=null,fuelAt=0,trip=null,trips=jget('fa.trips',[]),tripOpen=null,tripSnapAt=0,tab='map';
-window.__fa={styleWin:ms=>{dyn.win=ms},routeInfo:r=>routeInfo(r),instr:s=>instr(s),addReport:r=>reports.push(r),clearReports:()=>{reports=[]}};
+window.__fa={styleWin:ms=>{dyn.win=ms},rank:(l,q)=>rankResults(l,q),lim:t=>{const w=prepWay({id:1,tags:t,geometry:[{lat:0,lon:0},{lat:0,lon:0.001}]});const l=limitOf({w,fwd:true});return l?[l.v,l.est]:null},routeInfo:r=>routeInfo(r),instr:s=>instr(s),addReport:r=>reports.push(r),clearReports:()=>{reports=[]}};
 let active=null,lastBeep=0,roads=null,roadsAt=null,roadsBusy=false,roadsFail=0,lastReroute=0,zoomAt=0,autoZ=true;
 const alerted={};
 
@@ -1013,23 +1017,30 @@ $('#bLocalCam').onclick=()=>{
 /* ---------- limity prędkości z OpenStreetMap ---------- */
 function parseMs(v){
   if(v==null)return null;v=String(v).trim().toLowerCase();
-  const m=v.match(/^(\d{1,3})\s*(mph)?$/);if(m)return Math.round(parseInt(m[1],10)*(m[2]?1.609:1));
   if(v==='pl:urban')return 50;if(v==='pl:rural')return 90;if(v==='pl:motorway')return 140;if(v==='pl:expressway')return 120;
-  if(v==='none')return -1;
-  return null;
+  if(v==='pl:living_street'||v==='walk')return 20;if(v==='none')return -1;
+  const z=v.match(/^pl:(\d{2,3})$/);if(z)return parseInt(z[1],10);
+  const parts=v.split(/[;|]/).map(x=>x.trim()).filter(Boolean),vals=[];
+  parts.forEach(x=>{const m=x.match(/^(\d{1,3})\s*(mph|km\/h)?$/);if(m)vals.push(Math.round(parseInt(m[1],10)*(m[2]==='mph'?1.609:1)))});
+  return vals.length?Math.min.apply(null,vals):null;
 }
 function prepWay(w){
   const t=w.tags||{},g=w.geometry.map(p=>[p.lat,p.lon]);
   let s=90,n=-90,e=-180,ww=180;
   g.forEach(p=>{if(p[0]<s)s=p[0];if(p[0]>n)n=p[0];if(p[1]<ww)ww=p[1];if(p[1]>e)e=p[1]});
-  return {id:w.id,hw:t.highway,ms:parseMs(t.maxspeed),mf:parseMs(t['maxspeed:forward']),mb:parseMs(t['maxspeed:backward']),g,s,n,w:ww,e};
+  const ty=[t['maxspeed:type'],t['source:maxspeed'],t['zone:maxspeed'],t['zone:traffic']].filter(Boolean).join(' ');
+  const ms=parseMs(t.maxspeed)!=null?parseMs(t.maxspeed):(parseMs(t['zone:maxspeed'])!=null?parseMs(t['zone:maxspeed']):parseMs(t['maxspeed:type']));
+  return {id:w.id,hw:t.highway,ms,mf:parseMs(t['maxspeed:forward']),mb:parseMs(t['maxspeed:backward']),
+    ref:t.ref||'',expr:t.expressway==='yes'||/^S\d/.test(t.ref||''),one:t.oneway==='yes'||t.oneway==='1'||t.junction==='roundabout',
+    urban:/urban/i.test(ty)||t.lit==='yes'||/^(both|left|right|yes)$/.test(t.sidewalk||'')||/^(both|left|right|yes)$/.test(t['sidewalk:both']||''),
+    rural:/rural/i.test(ty),lanes:parseInt(t.lanes,10)||0,g,s,n,w:ww,e};
 }
 function ensureRoads(lat,lon){
   if(roadsBusy)return;
   if(roadsAt&&dist(lat,lon,roadsAt.lat,roadsAt.lon)<500)return;
   if(roadsFail&&Date.now()-roadsFail<30000)return;
   roadsBusy=true;
-  const q=`[out:json][timeout:40];way(around:1300,${lat.toFixed(5)},${lon.toFixed(5)})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];out tags geom;`;
+  const q=`[out:json][timeout:40];way(around:1300,${lat.toFixed(5)},${lon.toFixed(5)})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];out tags geom;`;
   ovp(q,true).then(j=>{roads=(j.elements||[]).filter(w=>w.geometry&&w.geometry.length>1).map(prepWay);roadsAt={lat,lon};roadsFail=0})
     .catch(()=>{roadsFail=Date.now()}).finally(()=>{roadsBusy=false});
 }
@@ -1055,14 +1066,28 @@ function matchRoad(lat,lon,hd){
   }
   return best;
 }
+/* limit z oznakowania w OSM; gdy go brak, szacujemy wg polskich przepisów (autostrada 140, ekspresowa 120/100,
+   obszar zabudowany 50, poza nim 90, dwujezdniowa 100, strefa zamieszkania 20) */
 function limitOf(m){
   const w=m.w;
   const v=m.fwd?(w.mf!=null?w.mf:w.ms):(w.mb!=null?w.mb:w.ms);
   if(v===-1)return null;
   if(v!=null)return {v,est:false};
-  if(w.hw==='motorway')return {v:140,est:true};
-  if(w.hw==='living_street')return {v:20,est:true};
-  if(w.hw==='residential')return {v:50,est:true};
+  const hw=w.hw,dual=w.one&&(w.lanes>=2||w.expr||hw==='trunk'||hw==='motorway');
+  if(hw==='motorway')return {v:140,est:true};
+  if(hw==='motorway_link')return {v:80,est:true};
+  if(hw==='trunk'||hw==='trunk_link'){
+    if(hw==='trunk_link')return {v:70,est:true};
+    if(w.expr)return {v:dual?120:100,est:true};
+    if(w.urban&&!w.rural)return {v:50,est:true};
+    return {v:dual?100:90,est:true};
+  }
+  if(hw==='living_street')return {v:20,est:true};
+  if(hw==='service')return w.urban?{v:30,est:true}:null;
+  if(hw==='residential')return {v:50,est:true};
+  if(/_link$/.test(hw))return {v:w.urban?50:70,est:true};
+  if(w.urban&&!w.rural)return {v:50,est:true};
+  if(hw==='primary'||hw==='secondary'||hw==='tertiary'||hw==='unclassified')return {v:dual?100:90,est:true};
   return null;
 }
 let cand=null,candN=0,shownLim=null;
@@ -1333,21 +1358,68 @@ function fromNom(x){
   return {title,sub:parts.slice(1,4).join(', '),lat:parseFloat(x.lat),lon:parseFloat(x.lon),kind:VAL[x.type]||''};
 }
 let qSeq=0,qAbort=null;
-async function searchPlaces(q){
-  const c=map.getCenter();
+const fold2=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ł/g,'l');
+const reEsc=x=>x.replace(/[.*+?^${}()|[\]\\"]/g,'\\$&');
+function pushRecent(x){
+  let r=jget('fa.recent',[]).filter(y=>!(y.title===x.title&&Math.abs(y.lat-x.lat)<1e-4&&Math.abs(y.lon-x.lon)<1e-4));
+  r.unshift({title:x.title,sub:x.sub||'',lat:x.lat,lon:x.lon,kind:x.kind||''});jset('fa.recent',r.slice(0,25));
+}
+function clearSearch(){$('#q').value='';$('#q').blur();$('#qClr').hidden=true;qSeq++;if(qAbort)qAbort.abort()}
+const refPos=()=>{if(me)return {lat:me.lat,lon:me.lon};const c=map.getCenter();return {lat:c.lat,lon:c.lng}};
+/* lokalne źródła: zapisane miejsca, ostatnie wybory oraz stacje i Żabki znane z mapy */
+function localMatches(q){
+  const f=fold2(q),out=[];
+  const add=(title,sub,lat,lon,kind,w)=>{if(fold2(title+' '+sub).includes(f))out.push({title,sub,lat,lon,kind,w})};
+  saved.forEach(x=>add(x.name,'Zapisane miejsce',x.lat,x.lon,'',0.45));
+  jget('fa.recent',[]).forEach(x=>add(x.title,x.sub,x.lat,x.lon,x.kind,0.7));
+  Object.keys(cells).forEach(k=>{const c=cells[k];(c.fuel||[]).forEach(x=>add(x.name,x.addr||'',x.lat,x.lon,'Stacja paliw',0.9));(c.zabka||[]).forEach(x=>add(x.name,x.addr||'',x.lat,x.lon,'Sklep',0.9))});
+  return out;
+}
+/* ranking: dopasowanie tekstu × odległość od użytkownika (najbliższe i najbardziej prawdopodobne pierwsze) */
+function rankResults(list,q){
+  const f=fold2(q),r=refPos(),seen={},out=[];
+  list.forEach(x=>{
+    if(!x||!isFinite(x.lat)||!isFinite(x.lon))return;
+    const key=fold2(x.title)+'|'+x.lat.toFixed(3)+'|'+x.lon.toFixed(3);if(seen[key])return;seen[key]=1;
+    x.d=dist(r.lat,r.lon,x.lat,x.lon);
+    const t=fold2(x.title);
+    const tier=t.startsWith(f)?1:t.split(/[\s\-,.]+/).some(w=>w.startsWith(f))?1.5:t.includes(f)?2.5:4;
+    x.score=(x.d/1000+0.4)*tier*(x.w||1);
+    out.push(x);
+  });
+  return out.sort((a,b)=>a.score-b.score);
+}
+async function overpassSearch(q,r,sg){
+  const e=reEsc(q.trim()),m=q.trim().match(/^(.+?)\s+(\d+[a-zA-Z]?)$/);
+  let body;
+  if(m)body=`nwr["addr:street"~"${reEsc(m[1])}",i]["addr:housenumber"~"^${reEsc(m[2])}$",i](around:40000,${r.lat.toFixed(4)},${r.lon.toFixed(4)});`;
+  else body=`nwr["name"~"${e}",i]["name"](around:15000,${r.lat.toFixed(4)},${r.lon.toFixed(4)});`;
+  const j=await ovp(`[out:json][timeout:15];(${body});out center tags 25;`,false);
+  return (j.elements||[]).map(el=>{
+    const t=el.tags||{},lat=el.lat!=null?el.lat:el.center&&el.center.lat,lon=el.lon!=null?el.lon:el.center&&el.center.lon;
+    if(lat==null)return null;
+    const street=[t['addr:street'],t['addr:housenumber']].filter(Boolean).join(' ');
+    const kv=t.amenity||t.shop||t.tourism||t.leisure||t.office||t.craft||t.healthcare||t.building;
+    return {title:t.name||street||'Miejsce',sub:[t.name?street:'',t['addr:city']||t['addr:place']||''].filter(Boolean).join(', '),lat,lon,kind:VAL[kv]||''};
+  }).filter(Boolean);
+}
+async function searchPlaces(q,live){
+  const r=refPos();
   if(qAbort)qAbort.abort();
   qAbort=new AbortController();const sg=qAbort.signal;
-  try{
-    const r=await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=8&lat=${c.lat.toFixed(4)}&lon=${c.lng.toFixed(4)}`,{signal:sg});
-    if(!r.ok)throw new Error('photon '+r.status);
-    const j=await r.json();
-    const out=(j.features||[]).map(fromPhoton).filter(Boolean);
-    if(out.length)return out;
-  }catch(e){if(e.name==='AbortError')throw e}
-  const b=map.getBounds().pad(2);
-  const r=await fetch(`${NOM}/search?format=jsonv2&addressdetails=1&limit=8&accept-language=pl&q=${encodeURIComponent(q)}&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`,{signal:sg});
-  if(!r.ok)throw new Error('nom '+r.status);
-  return (await r.json()).map(fromNom);
+  const jobs=[];
+  jobs.push(fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=15&lat=${r.lat.toFixed(4)}&lon=${r.lon.toFixed(4)}&location_bias_scale=0.7`,{signal:sg}).then(x=>{if(!x.ok)throw new Error('photon');return x.json()}).then(j=>(j.features||[]).map(fromPhoton).filter(Boolean)));
+  if(!live){   // dokładniejsze źródła tylko przy zatwierdzeniu (polityka Nominatim zabrania podpowiedzi „na żywo”)
+    const d=0.6,vb=`${r.lon-d},${r.lat+d},${r.lon+d},${r.lat-d}`;
+    jobs.push(fetch(`${NOM}/search?format=jsonv2&addressdetails=1&limit=10&accept-language=pl&q=${encodeURIComponent(q)}&viewbox=${vb}`,{signal:sg}).then(x=>{if(!x.ok)throw new Error('nom');return x.json()}).then(a=>a.map(fromNom)));
+    jobs.push(overpassSearch(q,r,sg));
+  }
+  const res=await Promise.allSettled(jobs);
+  if(sg.aborted)throw Object.assign(new Error('abort'),{name:'AbortError'});
+  let all=[];res.forEach(x=>{if(x.status==='fulfilled')all=all.concat(x.value)});
+  all=all.concat(localMatches(q));
+  if(!all.length&&res.every(x=>x.status==='rejected'))throw new Error('search failed');
+  return rankResults(all,q).slice(0,live?8:12);
 }
 function showResults(list,q){
   const box=$('#results');box.hidden=false;
@@ -1355,8 +1427,8 @@ function showResults(list,q){
   box.innerHTML='';
   list.forEach(x=>{
     const b=document.createElement('button');b.className='res';b.type='button';
-    b.innerHTML=`<span class="ib">${IC(/stacja/i.test(x.kind)?'fuel':'pin')}</span><span class="rb"><b>${esc(x.title)}</b><span class="s">${esc(x.sub)}</span>${x.kind?`<small>${esc(x.kind)}</small>`:''}</span>`;
-    b.onclick=()=>{box.hidden=true;$('#q').blur();follow=false;map.setView([x.lat,x.lon],16);openPlace({title:x.title,sub:x.sub||x.kind,lat:x.lat,lon:x.lon})};
+    b.innerHTML=`<span class="ib">${IC(/stacja/i.test(x.kind)?'fuel':'pin')}</span><span class="rb"><b>${esc(x.title)}</b><span class="s">${esc(x.sub)}</span>${x.kind?`<small>${esc(x.kind)}</small>`:''}</span>${x.d!=null?`<span class="dd">${esc(fmtD(x.d))}</span>`:''}`;
+    b.onclick=()=>{box.hidden=true;clearSearch();pushRecent(x);follow=false;map.setView([x.lat,x.lon],16);openPlace({title:x.title,sub:x.sub||x.kind,lat:x.lat,lon:x.lon})};
     box.appendChild(b);
   });
 }
@@ -1364,7 +1436,7 @@ async function runSearch(q,live){
   const my=++qSeq;
   if(!live){const box=$('#results');box.hidden=false;box.innerHTML='<div class="res none">Szukam…</div>'}
   try{
-    const list=await searchPlaces(q);
+    const list=await searchPlaces(q,live);
     if(my!==qSeq)return;
     showResults(list,q);
   }catch(err){
@@ -1378,8 +1450,9 @@ $('#searchRow').addEventListener('submit',e=>{
   clearTimeout(qTimer);$('#q').blur();runSearch(q,false);
 });
 let qTimer=null;
+$('#qClr').onclick=()=>{clearSearch();$('#results').hidden=true;$('#q').focus()};
 $('#q').addEventListener('input',()=>{
-  const q=$('#q').value.trim();clearTimeout(qTimer);
+  const q=$('#q').value.trim();clearTimeout(qTimer);$('#qClr').hidden=!$('#q').value;
   if(q.length<2){qSeq++;if(qAbort)qAbort.abort();$('#results').hidden=true;return}
   qTimer=setTimeout(()=>runSearch(q,true),250);
 });
