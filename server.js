@@ -21,7 +21,7 @@ const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 // czas życia zgłoszenia w minutach
 const TTL = { police: 90, camera: 120, accident: 150, stopped: 60, animal: 60, obstacle: 60, lane: 180,
   closed: 240, jam: 45, roadwork: 360, ice: 180, fog: 120, pothole: 1440,
-  breakdown: 90, debris: 90, rockfall: 240, detour: 480 };
+  breakdown: 90, detour: 480, hazard: 120, control: 90, unmarked: 90 };
 const FUELS = ['pb95', 'pb98', 'on', 'lpg'];
 const ONLINE_MS = 45000;
 
@@ -91,7 +91,8 @@ function parseBBox(x) {
   return { s, w, n, e };
 }
 const inBox = (b, lat, lon) => lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e;
-const pubReport = r => ({ id: r.id, type: r.type, lat: r.lat, lon: r.lon, t: r.t, exp: r.exp, up: r.up, down: r.down });
+const pubReport = r => { const o = { id: r.id, type: r.type, lat: r.lat, lon: r.lon, t: r.t, exp: r.exp, up: r.up, down: r.down }; if (r.br) o.br = r.br; return o; };
+const cleanBrand = v => typeof v === 'string' ? v.replace(/[\u0000-\u001f<>"&]/g, '').replace(/\s+/g, ' ').trim().slice(0, 30) : '';
 function countOnline() {
   const now = Date.now(); let n = 0;
   for (const v of online.values()) if (now - v.t < ONLINE_MS) n++;
@@ -148,6 +149,7 @@ async function api(req, res, url, ip) {
       // takie samo zgłoszenie w pobliżu: traktujemy jako potwierdzenie
       for (const r of reports.values()) {
         if (r.type === b.type && r.exp > now && hav(b.lat, b.lon, r.lat, r.lon) < 80) {
+          if (b.type === 'unmarked' && !r.br) r.br = cleanBrand(b.br);
           if (r.by !== id) applyVote(r, id, 1);
           return send(res, 200, { report: pubReport(r), merged: true });
         }
@@ -158,6 +160,7 @@ async function api(req, res, url, ip) {
         type: b.type, lat: b.lat, lon: b.lon, t: now, exp: now + TTL[b.type] * 60000,
         up: 1, down: 0, by: id, voters: new Set()
       };
+      if (b.type === 'unmarked') { const br = cleanBrand(b.br); if (br) r.br = br; }
       reports.set(r.id, r);
       markDirty();
       return send(res, 200, { report: pubReport(r) });
